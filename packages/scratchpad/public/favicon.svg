@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#eef2ff"/>
+  <!-- Secondary: prompt chevron -->
+  <text x="108" y="300" font-family="'Menlo','Consolas','Courier New',monospace" font-size="140" font-weight="700" fill="#1e1b4b" opacity="0.35">&gt;</text>
+  <!-- Primary: SQL -->
+  <text x="192" y="300" font-family="'Menlo','Consolas','Courier New',monospace" font-size="140" font-weight="700" fill="#1e1b4b">SQL</text>
+</svg>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<style type="text/css">
+    .tile-tl{fill:#AB47BC;}
+    .tile-tr{fill:#CE93D8;}
+    .tile-bl{fill:#CE93D8;}
+    .tile-br{fill:#9C27B0;}
+    .sparkle{fill:#F9A825;}
+</style>
+<g>
+    <!-- Top-left tile -->
+    <rect x="8" y="8" width="36" height="36" rx="8" class="tile-tl"/>
+    <!-- Top-right tile -->
+    <rect x="56" y="8" width="36" height="36" rx="8" class="tile-tr"/>
+    <!-- Bottom-left tile -->
+    <rect x="8" y="56" width="36" height="36" rx="8" class="tile-bl"/>
+    <!-- Bottom-right tile -->
+    <rect x="56" y="56" width="36" height="36" rx="8" class="tile-br"/>
+    <!-- Small sparkle accent -->
+    <polygon class="sparkle" points="90,4 91.5,10 98,12 91.5,14 90,20 88.5,14 82,12 88.5,10"/>
+</g>
+</svg>

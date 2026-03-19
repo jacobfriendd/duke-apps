@@ -1,0 +1,11 @@
+# SQL Scratchpad needs access to datasources for querying
+apis:
+  - GET /api/datasources-list
+  - GET /api/datasources/*/mappings-list
+  - GET /api/datasources/*/mappings/*/fields-list
+  - POST /api/datasources/*/_query
+  - POST /api/queries
+  - POST /api/datasets
+  - POST /api/models/*/_completion
+  - POST /api/datasources/*/_search-metadata
+  - POST /api/models/go_everyday/_chat
