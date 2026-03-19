@@ -1,15 +1,24 @@
-# WebstormProjects Monorepo
+# duke-apps Monorepo
 
 A monorepo using **npm workspaces** and **Turborepo** for managing multiple apps and shared packages.
 
 ## Structure
 
 ```
-WebstormProjects/
-├── apps/          ← deployable apps
-├── packages/      ← shared libraries and config
+duke-apps/
+├── packages/      ← apps and shared libraries
 ├── package.json   ← root workspace config
 └── turbo.json     ← task pipeline config
+```
+
+All apps and shared libraries live under `packages/`. Use naming conventions to distinguish them:
+
+```
+packages/
+  app-portal/       ← a deployable app
+  app-dashboard/    ← another deployable app
+  ui/               ← shared component library
+  utils/            ← shared utilities
 ```
 
 ## Getting Started
@@ -20,31 +29,31 @@ Install all dependencies from the root:
 npm install
 ```
 
-## Adding Apps
+## Adding an App
 
 ```bash
 # Next.js app
-cd apps && npx create-next-app@latest my-app
+cd packages && npx create-next-app@latest app-my-app
 
 # Vite app
-cd apps && npm create vite@latest my-app
+cd packages && npm create vite@latest app-my-app
 ```
 
-## Adding Shared Packages
+## Adding a Shared Package
 
 Create a `packages/my-package/package.json` with a scoped name:
 
 ```json
 {
-  "name": "@workspace/my-package",
+  "name": "@duke/my-package",
   "version": "0.0.1"
 }
 ```
 
-Then install it in any app:
+Then run `npm install` at the root, and install it in any app:
 
 ```bash
-npm install @workspace/my-package --workspace=apps/my-app
+npm install @duke/my-package --workspace=packages/app-my-app
 ```
 
 ## Root Commands
@@ -52,7 +61,7 @@ npm install @workspace/my-package --workspace=apps/my-app
 | Command         | Description                                  |
 |-----------------|----------------------------------------------|
 | `npm run dev`   | Start all dev servers in parallel            |
-| `npm run build` | Build all apps in dependency order           |
+| `npm run build` | Build all packages in dependency order       |
 | `npm run test`  | Run tests across all workspaces              |
 | `npm run lint`  | Lint all workspaces                          |
 | `npm run clean` | Clean all build outputs                      |
@@ -60,9 +69,9 @@ npm install @workspace/my-package --workspace=apps/my-app
 To run a command in a single workspace:
 
 ```bash
-npm run build --workspace=apps/my-app
+npm run build --workspace=packages/app-my-app
 ```
 
 ## How Turborepo Works
 
-Turborepo builds a task graph from your workspace dependencies. If `apps/web` depends on `packages/ui`, running `turbo build` will automatically build `packages/ui` first. It also caches outputs — only changed packages are rebuilt on subsequent runs.
+Turborepo builds a task graph from your workspace dependencies. If `packages/app-portal` depends on `packages/ui`, running `turbo build` will automatically build `packages/ui` first. It also caches outputs — only changed packages are rebuilt on subsequent runs.
