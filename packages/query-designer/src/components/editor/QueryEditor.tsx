@@ -346,6 +346,34 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
     setNameInput(definition.name)
   }, [definition.name])
 
+  // ── Auto-save on definition change (debounced 1.2s) ─────────────────
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const isSaving = useRef(false)
+
+  const manualSave = useCallback(async () => {
+    if (isSaving.current || !definition.datasource) return
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
+    isSaving.current = true
+    setSaveStatus('saving')
+    try {
+      let saved: QueryRecord
+      if (dbId) {
+        saved = await updateQuery(dbId, definition)
+      } else {
+        saved = await createQuery(definition)
+        setDbId(saved.id)
+      }
+      onSaved(saved)
+      setSaveStatus('saved')
+      window.setTimeout(() => setSaveStatus('idle'), 1800)
+    } catch {
+      setSaveStatus('error')
+      window.setTimeout(() => setSaveStatus('idle'), 2200)
+    } finally {
+      isSaving.current = false
+    }
+  }, [dbId, definition, onSaved])
+
   // Keyboard shortcuts for undo/redo/save
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -513,7 +541,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
           label: column.label,
           caption: `${sourceLabel(definition)} · ${column.dataType}`,
           sourceLabel: sourceLabel(definition),
-          reference: { relation: 'source', column: column.name },
+          reference: { relation: 'source' as const, column: column.name },
           raw: column.name,
         }))
       }
@@ -528,7 +556,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
           label: field.alias || field.column,
           caption: `${stage.alias} · previous stage output`,
           sourceLabel: stage.alias,
-          reference: { relation: 'source', column: field.alias || field.column },
+          reference: { relation: 'source' as const, column: field.alias || field.column },
           raw: field.alias || field.column,
         }))
       }
@@ -546,7 +574,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
         label: column.label,
         caption: `${joinLabel} · ${column.dataType}`,
         sourceLabel: joinLabel,
-        reference: { relation: 'join', relationId: join.id, column: column.name },
+        reference: { relation: 'join' as const, relationId: join.id, column: column.name },
         raw: column.name,
       }))
     })
@@ -655,10 +683,6 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
     }
   }, [compiled.errors, compiled.sql, definition.datasource, runPreview])
 
-  // ── Auto-save on definition change (debounced 1.2s) ─────────────────
-  const autoSaveTimer = useRef<ReturnType<typeof setTimeout>>()
-  const isSaving = useRef(false)
-
   useEffect(() => {
     // Don't auto-save until the query has a datasource picked
     if (!definition.datasource) return
@@ -694,30 +718,6 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [definition])
-
-  const manualSave = useCallback(async () => {
-    if (isSaving.current || !definition.datasource) return
-    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
-    isSaving.current = true
-    setSaveStatus('saving')
-    try {
-      let saved: QueryRecord
-      if (dbId) {
-        saved = await updateQuery(dbId, definition)
-      } else {
-        saved = await createQuery(definition)
-        setDbId(saved.id)
-      }
-      onSaved(saved)
-      setSaveStatus('saved')
-      window.setTimeout(() => setSaveStatus('idle'), 1800)
-    } catch {
-      setSaveStatus('error')
-      window.setTimeout(() => setSaveStatus('idle'), 2200)
-    } finally {
-      isSaving.current = false
-    }
-  }, [dbId, definition, onSaved])
 
   function commitName() {
     setName(nameInput.trim() || definition.name)
@@ -862,7 +862,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
     setFilterForm({
       fieldKey,
       operator: condition.operator,
-      valueType: condition.valueType,
+      valueType: condition.valueType as 'literal' | 'field',
       value: condition.value,
       valueKey,
       value2: condition.value2 ?? '',
