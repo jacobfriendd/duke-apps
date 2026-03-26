@@ -43,7 +43,7 @@ type Action =
   | { type: 'REMOVE_FLOW_STEP'; stepId: string }
   | { type: 'REORDER_FLOW_STEPS'; steps: FlowStep[] }
   // Subqueries
-  | { type: 'ADD_SUBQUERY'; alias: string; id?: string }
+  | { type: 'ADD_SUBQUERY'; alias: string; id?: string; source?: string }
   | { type: 'UPDATE_SUBQUERY'; subquery: Subquery }
   | { type: 'REMOVE_SUBQUERY'; subqueryId: string }
   | { type: 'SET_SUBQUERY_ALIAS'; subqueryId: string; alias: string }
@@ -208,6 +208,7 @@ function reducer(state: QueryDefinition, action: Action): QueryDefinition {
     case 'ADD_SUBQUERY': {
       const sub = emptySubquery(action.alias)
       if (action.id) sub.id = action.id
+      if (action.source) sub.source = action.source
       return { ...state, subqueries: [...state.subqueries, sub] }
     }
     case 'UPDATE_SUBQUERY':

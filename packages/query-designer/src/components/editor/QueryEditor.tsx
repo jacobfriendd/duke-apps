@@ -1005,10 +1005,34 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
     const alias = subqueryAlias.trim()
     if (!alias) return
     const id = generateId()
-    dispatch({ type: 'ADD_SUBQUERY', alias, id })
+    // Auto-chain: new sub-select reads from the last step (or main)
+    const lastStep = definition.subqueries.length > 0
+      ? definition.subqueries[definition.subqueries.length - 1].id
+      : 'main'
+    dispatch({ type: 'ADD_SUBQUERY', alias, id, source: lastStep })
     setActiveStageId(id)
     setSubqueryAlias('')
     setSubqueryDialogOpen(false)
+  }
+
+  function handleAddSubqueryPreset(preset: 'summarize' | 'filter' | 'top_n') {
+    const stepNum = definition.subqueries.length + 2
+    const presetNames: Record<string, string> = {
+      summarize: `step_${stepNum}_summarize`,
+      filter: `step_${stepNum}_filter`,
+      top_n: `step_${stepNum}_top`,
+    }
+    const id = generateId()
+    const lastStep = definition.subqueries.length > 0
+      ? definition.subqueries[definition.subqueries.length - 1].id
+      : 'main'
+    dispatch({ type: 'ADD_SUBQUERY', alias: presetNames[preset], id, source: lastStep })
+    setActiveStageId(id)
+    setSubqueryDialogOpen(false)
+    // Switch to the appropriate ribbon tab for the preset
+    if (preset === 'summarize') setRibbonTab('columns')
+    if (preset === 'filter') setRibbonTab('filters')
+    if (preset === 'top_n') setRibbonTab('sort')
   }
 
   function handleRemoveSubquery(id: string) {
@@ -1115,7 +1139,10 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                 Sort &amp; Limit
                 {activeSortLimit.sorts.length > 0 && <span className="ml-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-sky-500 px-1 text-[9px] font-bold text-white">{activeSortLimit.sorts.length}</span>}
               </TabsTrigger>
-              <TabsTrigger value="subselects" className="ribbon-tab">Sub-selects</TabsTrigger>
+              <TabsTrigger value="subselects" className="ribbon-tab">
+                Sub-selects
+                {definition.subqueries.length > 0 && <span className="ml-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-sky-500 px-1 text-[9px] font-bold text-white">{definition.subqueries.length}</span>}
+              </TabsTrigger>
             </TabsList>
           </Tabs>
 
@@ -1210,6 +1237,30 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                     </div>
                   </RibbonGroup>
                 )}
+                {/* Aggregation warning: if there's an aggregate but too many non-aggregated columns */}
+                {(() => {
+                  const aggregated = activeFields.filter(f => f.aggregate && f.aggregate !== 'none')
+                  const nonAggregated = activeFields.filter(f => !f.aggregate || f.aggregate === 'none')
+                  if (aggregated.length > 0 && nonAggregated.length > 3) {
+                    return (
+                      <RibbonGroup title="">
+                        <div className="flex max-w-sm items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+                          <div className="text-[11px] leading-snug text-amber-800">
+                            <p className="font-medium">Your {aggregated[0].aggregate} will probably be 1 for every row.</p>
+                            <p className="mt-0.5 text-amber-700">
+                              You have {nonAggregated.length} non-summarized columns, so each row is unique.
+                              Remove columns you don't need, or{' '}
+                              <button className="font-medium underline" onClick={() => setRibbonTab('subselects')}>add a sub-select</button>
+                              {' '}to summarize in a separate step.
+                            </p>
+                          </div>
+                        </div>
+                      </RibbonGroup>
+                    )
+                  }
+                  return null
+                })()}
               </>
             )}
 
@@ -1383,32 +1434,66 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
 
             {ribbonTab === 'subselects' && (
               <>
-                <RibbonGroup title="Stages">
+                {/* Pipeline breadcrumb */}
+                <RibbonGroup title="Your query pipeline">
                   <div className="flex items-center gap-1">
-                    <StageButton active={isMainStage} onClick={() => setActiveStageId('main')}>Main</StageButton>
-                    {definition.subqueries.map(subquery => (
-                      <StageButton key={subquery.id} active={activeStageId === subquery.id} onClick={() => setActiveStageId(subquery.id)}>
-                        {subquery.alias}
-                        <button
-                          className="ml-1 rounded-full p-0.5 text-slate-400 transition-colors hover:bg-white hover:text-destructive"
-                          onClick={event => {
-                            event.stopPropagation()
-                            handleRemoveSubquery(subquery.id)
-                          }}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </StageButton>
-                    ))}
+                    <StageButton active={isMainStage} onClick={() => setActiveStageId('main')}>
+                      <span className="flex items-center gap-1">
+                        <span className="flex h-4 w-4 items-center justify-center rounded-full bg-sky-100 text-[9px] font-bold text-sky-700">1</span>
+                        Get Data
+                      </span>
+                    </StageButton>
+                    {definition.subqueries.map((subquery, index) => {
+                      const stepNum = index + 2
+                      const readableLabel = subquery.alias
+                        .replace(/^step_\d+_?/, '')
+                        .replace(/_/g, ' ')
+                        .replace(/^\w/, c => c.toUpperCase()) || `Step ${stepNum}`
+                      return (
+                        <span key={subquery.id} className="flex items-center gap-1">
+                          <span className="text-slate-300">→</span>
+                          <StageButton active={activeStageId === subquery.id} onClick={() => setActiveStageId(subquery.id)}>
+                            <span className="flex items-center gap-1">
+                              <span className={cn(
+                                'flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold',
+                                activeStageId === subquery.id ? 'bg-white/30 text-white' : 'bg-sky-100 text-sky-700'
+                              )}>{stepNum}</span>
+                              {readableLabel}
+                              <button
+                                className="ml-0.5 rounded-full p-0.5 opacity-50 transition-opacity hover:opacity-100"
+                                onClick={event => {
+                                  event.stopPropagation()
+                                  handleRemoveSubquery(subquery.id)
+                                }}
+                                title="Remove this sub-select"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </span>
+                          </StageButton>
+                        </span>
+                      )
+                    })}
+                    <span className="text-slate-300">→</span>
                     <Button variant="outline" size="sm" className="h-8 rounded border-dashed border-sky-300 bg-transparent px-2.5 text-xs hover:bg-sky-50/60" onClick={() => setSubqueryDialogOpen(true)}>
                       <Plus className="mr-1 h-3.5 w-3.5" />
-                      New
+                      Add sub-select
                     </Button>
                   </div>
                 </RibbonGroup>
 
+                {/* Contextual info for selected step */}
+                {definition.subqueries.length === 0 && (
+                  <RibbonGroup title="What are sub-selects?">
+                    <div className="flex max-w-md flex-col gap-1.5 text-xs text-slate-600">
+                      <p>Sub-selects let you <strong>refine your results in steps</strong>. Your main query gets the raw data, then each sub-select can further summarize, filter, or reshape it.</p>
+                      <p className="text-slate-500">Example: Get all orders → Count orders per customer → Show only customers with 5+ orders</p>
+                    </div>
+                  </RibbonGroup>
+                )}
+
                 {activeSubquery && (
-                  <RibbonGroup title="Selected Stage">
+                  <RibbonGroup title="This sub-select">
                     <div className="flex items-end gap-2">
                       <div className="grid gap-1">
                         <Label className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Name</Label>
@@ -1419,7 +1504,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                         />
                       </div>
                       <div className="grid gap-1">
-                        <Label className="text-[10px] uppercase tracking-[0.12em] text-slate-500">From</Label>
+                        <Label className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Reads from</Label>
                         <Select
                           value={activeSubquery.source}
                           onValueChange={value => dispatch({ type: 'SET_SUBQUERY_SOURCE', subqueryId: activeSubquery.id, source: value })}
@@ -1428,13 +1513,16 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="main">Main Query</SelectItem>
-                            {definition.subqueries.filter(item => item.id !== activeSubquery.id).map(item => (
-                              <SelectItem key={item.id} value={item.id}>{item.alias}</SelectItem>
+                            <SelectItem value="main">Step 1 — Get Data</SelectItem>
+                            {definition.subqueries.filter(item => item.id !== activeSubquery.id).map((item, idx) => (
+                              <SelectItem key={item.id} value={item.id}>Step {idx + 2} — {item.alias.replace(/_/g, ' ')}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
+                      <p className="pb-1 text-[10px] leading-tight text-slate-400">
+                        Use the Columns, Filters, and Sort tabs to configure what this sub-select does.
+                      </p>
                     </div>
                   </RibbonGroup>
                 )}
@@ -1826,7 +1914,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                   <SelectTrigger className="h-10 rounded-md border-slate-200 bg-white">
                     <SelectValue placeholder="Choose a table to join" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-60">
                     {tables.filter(item => item.restId !== selectedSourceTableId).map(table => (
                       <SelectItem key={table.id} value={table.restId}>{table.label}</SelectItem>
                     ))}
@@ -1972,27 +2060,88 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={subqueryDialogOpen} onOpenChange={setSubqueryDialogOpen}>
-        <DialogContent className="max-w-md rounded-xl border-slate-200 bg-[#f8fbff] p-0 shadow-2xl">
+      <Dialog open={subqueryDialogOpen} onOpenChange={val => { setSubqueryDialogOpen(val); if (!val) setSubqueryAlias('') }}>
+        <DialogContent className="max-w-lg rounded-xl border-slate-200 bg-[#f8fbff] p-0 shadow-2xl">
           <DialogHeader className="border-b border-slate-200 px-6 py-5">
             <DialogTitle className="flex items-center gap-2 text-slate-900">
               <Layers3 className="h-5 w-5 text-sky-600" />
-              Create subquery stage
+              Add a sub-select
             </DialogTitle>
-            <DialogDescription>Subqueries work like ribbon-driven SQL CTEs. Each one can keep refining the rows from an earlier stage.</DialogDescription>
+            <DialogDescription>
+              A sub-select takes the results from a previous step and lets you refine them further — summarize, filter, or pick the top rows.
+              {definition.subqueries.length === 0 && (
+                <span className="mt-1 block text-slate-500">This will be <strong>Step 2</strong>, reading from your main query.</span>
+              )}
+            </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-3 px-6 py-6">
-            <div className="grid gap-2">
-              <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Stage name</Label>
-              <Input value={subqueryAlias} onChange={event => setSubqueryAlias(event.target.value.replace(/\s+/g, '_'))} className="h-10 rounded-md border-slate-200 bg-white" placeholder="Example: top_customers" />
+          <div className="grid gap-4 px-6 py-5">
+            <div>
+              <p className="mb-2.5 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Quick start — what do you want to do?</p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                <button
+                  className="group flex flex-col gap-1.5 rounded-lg border border-slate-200 bg-white p-3 text-left transition-all hover:border-sky-300 hover:shadow-sm"
+                  onClick={() => handleAddSubqueryPreset('summarize')}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Sigma className="h-4 w-4 text-sky-600" />
+                    <span className="text-sm font-medium text-slate-800">Summarize</span>
+                  </div>
+                  <p className="text-[11px] leading-snug text-slate-500">Count, sum, or average your results by group</p>
+                  <p className="text-[10px] italic text-slate-400">e.g. "Count customers per city"</p>
+                </button>
+                <button
+                  className="group flex flex-col gap-1.5 rounded-lg border border-slate-200 bg-white p-3 text-left transition-all hover:border-sky-300 hover:shadow-sm"
+                  onClick={() => handleAddSubqueryPreset('filter')}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Filter className="h-4 w-4 text-sky-600" />
+                    <span className="text-sm font-medium text-slate-800">Filter further</span>
+                  </div>
+                  <p className="text-[11px] leading-snug text-slate-500">Narrow down results from the previous step</p>
+                  <p className="text-[10px] italic text-slate-400">e.g. "Only cities with 5+ customers"</p>
+                </button>
+                <button
+                  className="group flex flex-col gap-1.5 rounded-lg border border-slate-200 bg-white p-3 text-left transition-all hover:border-sky-300 hover:shadow-sm"
+                  onClick={() => handleAddSubqueryPreset('top_n')}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <ArrowUpDown className="h-4 w-4 text-sky-600" />
+                    <span className="text-sm font-medium text-slate-800">Pick top N</span>
+                  </div>
+                  <p className="text-[11px] leading-snug text-slate-500">Sort and keep only the first N rows</p>
+                  <p className="text-[10px] italic text-slate-400">e.g. "Top 10 products by revenue"</p>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-slate-200" />
+              <span className="text-[10px] font-medium uppercase tracking-widest text-slate-400">or</span>
+              <div className="h-px flex-1 bg-slate-200" />
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Create with a custom name</p>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={subqueryAlias}
+                  onChange={event => setSubqueryAlias(event.target.value.replace(/\s+/g, '_'))}
+                  className="h-9 flex-1 rounded-md border-slate-200 bg-white text-sm"
+                  placeholder="e.g. customers_by_city"
+                  onKeyDown={e => { if (e.key === 'Enter' && subqueryAlias.trim()) handleAddSubquery() }}
+                />
+                <Button
+                  size="sm"
+                  className="h-9 rounded-md bg-sky-600 px-4 text-white hover:bg-sky-700"
+                  onClick={handleAddSubquery}
+                  disabled={!subqueryAlias.trim()}
+                >
+                  Create
+                </Button>
+              </div>
             </div>
           </div>
-
-          <DialogFooter className="border-t border-slate-200 px-6 py-4">
-            <Button variant="ghost" className="rounded-md" onClick={() => setSubqueryDialogOpen(false)}>Cancel</Button>
-            <Button className="rounded-md bg-sky-600 text-white hover:bg-sky-700" onClick={handleAddSubquery} disabled={!subqueryAlias.trim()}>Create stage</Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
