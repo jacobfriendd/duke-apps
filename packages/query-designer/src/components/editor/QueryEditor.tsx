@@ -17,13 +17,11 @@ import {
   HelpCircle,
   Layers3,
   Loader2,
-  MessageSquare,
   PanelTop,
   PencilLine,
   Play,
   Plus,
   Redo2,
-  Save,
   Search,
   Sigma,
   Sparkles,
@@ -48,8 +46,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { NlBar } from './NlBar'
-import { ChatSidebar } from './ChatSidebar'
-import { ResultsGrid } from './ResultsGrid'
+import { TabbedResults } from './TabbedResults'
 import { useQueryEditor } from '@/hooks/useQueryEditor'
 import {
   createQuery,
@@ -62,6 +59,7 @@ import {
 } from '@/lib/api'
 import { emptyGroup, newQueryDefinition } from '@/lib/defaults'
 import { compileQuerySql } from '@/lib/sql-compiler'
+import { decompileSql } from '@/lib/sql-decompiler'
 import { cn, generateId } from '@/lib/utils'
 import type {
   AggregateFunction,
@@ -277,13 +275,16 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
   const [columnCache, setColumnCache] = useState<Record<string, DatasourceColumn[]>>({})
 
   const [betaAiEnabled, setBetaAiEnabled] = useState(false)
-  const [chatSidebarOpen, setChatSidebarOpen] = useState(false)
+
 
   const [previewRows, setPreviewRows] = useState<Record<string, unknown>[]>([])
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [previewUpdatedAt, setPreviewUpdatedAt] = useState<string>('')
   const [sqlPanelOpen, setSqlPanelOpen] = useState(true)
+  const [sqlDraft, setSqlDraft] = useState('')
+  const [sqlEditing, setSqlEditing] = useState(false)
+  const [sqlParseError, setSqlParseError] = useState<string | null>(null)
 
   const [sourceDialogOpen, setSourceDialogOpen] = useState(false)
   const [sourceDraft, setSourceDraft] = useState<SourceDraft>({ datasource: '', tableId: '' })
@@ -350,31 +351,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const isSaving = useRef(false)
 
-  const manualSave = useCallback(async () => {
-    if (isSaving.current || !definition.datasource) return
-    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
-    isSaving.current = true
-    setSaveStatus('saving')
-    try {
-      let saved: QueryRecord
-      if (dbId) {
-        saved = await updateQuery(dbId, definition)
-      } else {
-        saved = await createQuery(definition)
-        setDbId(saved.id)
-      }
-      onSaved(saved)
-      setSaveStatus('saved')
-      window.setTimeout(() => setSaveStatus('idle'), 1800)
-    } catch {
-      setSaveStatus('error')
-      window.setTimeout(() => setSaveStatus('idle'), 2200)
-    } finally {
-      isSaving.current = false
-    }
-  }, [dbId, definition, onSaved])
-
-  // Keyboard shortcuts for undo/redo/save
+  // Keyboard shortcuts for undo/redo
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       const mod = event.metaKey || event.ctrlKey
@@ -382,11 +359,11 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
       if (event.key === 'z' && !event.shiftKey) { event.preventDefault(); undo() }
       if (event.key === 'z' && event.shiftKey) { event.preventDefault(); redo() }
       if (event.key === 'y') { event.preventDefault(); redo() }
-      if (event.key === 's') { event.preventDefault(); void manualSave() }
+      if (event.key === 's') { event.preventDefault() } // prevent browser save dialog
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [undo, redo, manualSave])
+  }, [undo, redo])
 
   useEffect(() => {
     let cancelled = false
@@ -612,6 +589,33 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
     () => compileQuerySql(definition, activeStageId, dialect),
     [activeStageId, definition, dialect]
   )
+
+  // Sync SQL draft from compiler when not manually editing
+  useEffect(() => {
+    if (!sqlEditing) {
+      setSqlDraft(compiled.sql || '')
+      setSqlParseError(null)
+    }
+  }, [compiled.sql, sqlEditing])
+
+  const applySqlEdit = useCallback(() => {
+    const result = decompileSql(sqlDraft, sourceColumns)
+    if (result.errors.length > 0) {
+      setSqlParseError(result.errors[0])
+      return
+    }
+    const patch = result.patch
+    const merged = { ...definition, ...patch }
+    setDefinition(merged)
+    setSqlEditing(false)
+    setSqlParseError(null)
+  }, [sqlDraft, sourceColumns, definition, setDefinition])
+
+  const cancelSqlEdit = useCallback(() => {
+    setSqlDraft(compiled.sql || '')
+    setSqlEditing(false)
+    setSqlParseError(null)
+  }, [compiled.sql])
 
   const resultsEmptyState = useMemo(() => {
     if (!definition.datasource) {
@@ -1069,19 +1073,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
 
             <div className="mx-1 h-4 w-px bg-slate-200" />
 
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1.5 rounded-md px-2.5 text-xs font-medium"
-              onClick={() => void manualSave()}
-              disabled={!definition.datasource || saveStatus === 'saving'}
-              title="Save (Ctrl+S)"
-            >
-              <Save className="h-3.5 w-3.5" />
-              Save
-            </Button>
-
-            <div className="ml-1 flex items-center gap-1 text-[11px]">
+            <div className="flex items-center gap-1 text-[11px]">
               {saveStatus === 'saving' && <><Loader2 className="h-3 w-3 animate-spin text-slate-400" /><span className="text-slate-400">Saving...</span></>}
               {saveStatus === 'saved' && <><CheckCircle2 className="h-3 w-3 text-emerald-500" /><span className="text-emerald-600">Saved</span></>}
               {saveStatus === 'error' && <><AlertCircle className="h-3 w-3 text-destructive" /><span className="text-destructive">Save failed</span></>}
@@ -1093,25 +1085,13 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
               <Switch
                 checked={betaAiEnabled}
                 onCheckedChange={setBetaAiEnabled}
-                className="h-4 w-7 data-[state=checked]:bg-violet-500"
               />
               <span className="text-[11px] text-slate-500">
                 AI
-                <span className="ml-1 rounded-full bg-violet-100 px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide text-violet-600">Beta</span>
+                <span className="ml-1 rounded-full bg-sky-100 px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide text-sky-600">Beta</span>
               </span>
             </div>
 
-            {betaAiEnabled && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 rounded-md text-violet-600 hover:bg-violet-50"
-                onClick={() => setChatSidebarOpen(prev => !prev)}
-                title="AI Assistant"
-              >
-                <MessageSquare className="h-3.5 w-3.5" />
-              </Button>
-            )}
           </div>
         </div>
 
@@ -1194,11 +1174,6 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                         <button className="rounded-full border border-sky-200 bg-sky-50/80 px-2.5 py-1 text-[10px] font-medium text-sky-700 transition-colors hover:bg-sky-100" onClick={() => setSourceDialogOpen(true)}>
                           Choose a data source
                         </button>
-                        {betaAiEnabled && (
-                          <button className="rounded-full border border-violet-200 bg-violet-50/80 px-2.5 py-1 text-[10px] font-medium text-violet-700 transition-colors hover:bg-violet-100" onClick={() => setChatSidebarOpen(true)}>
-                            Ask AI to build a query
-                          </button>
-                        )}
                       </div>
                     </div>
                   </RibbonGroup>
@@ -1473,11 +1448,9 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
         <NlBar
           datasource={currentDatasource}
           tables={tables}
-          onInsertSql={sql => {
-            // When NL generates SQL, show it in the preview panel
-            setSqlPanelOpen(true)
-            void runPreview(sql)
-          }}
+          definition={definition}
+          sourceColumns={sourceColumns}
+          onApplyDefinition={merged => setDefinition(merged)}
         />
       )}
 
@@ -1490,7 +1463,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
             >
               <div className="flex items-center gap-2">
                 <Code2 className="h-3.5 w-3.5 text-sky-600" />
-                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Generated SQL</span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{sqlEditing ? 'Editing SQL' : 'SQL'}</span>
                 <span className={cn('text-[10px] transition-transform', sqlPanelOpen ? 'rotate-180' : '')}>▾</span>
               </div>
               <div className="flex items-center gap-3">
@@ -1506,26 +1479,76 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
             </button>
             {sqlPanelOpen && (
               <div className="relative px-4 pb-2">
-                <pre
-                  className="overflow-auto rounded-md border border-slate-200 bg-white px-3 py-2 font-mono text-[11px] leading-5 text-slate-700 select-all"
-                  style={{ maxHeight: 160 }}
-                >{compiled.sql || '-- Choose a datasource and table to begin'}</pre>
+                <textarea
+                  className={cn(
+                    'w-full resize-none overflow-auto rounded-md border px-3 py-2 font-mono text-[11px] leading-5 outline-none transition-colors',
+                    sqlEditing
+                      ? 'border-sky-300 bg-white text-slate-900 ring-1 ring-sky-200'
+                      : 'border-slate-200 bg-white text-slate-700'
+                  )}
+                  style={{ maxHeight: 160, minHeight: 60 }}
+                  rows={Math.min(8, Math.max(3, (sqlDraft || '').split('\n').length))}
+                  value={sqlDraft || '-- Choose a datasource and table to begin'}
+                  onChange={e => {
+                    setSqlDraft(e.target.value)
+                    if (!sqlEditing) setSqlEditing(true)
+                    setSqlParseError(null)
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault()
+                      applySqlEdit()
+                    }
+                    if (e.key === 'Escape' && sqlEditing) {
+                      e.preventDefault()
+                      cancelSqlEdit()
+                    }
+                  }}
+                  spellCheck={false}
+                />
+                {sqlParseError && (
+                  <div className="mt-1 flex items-center gap-1.5 text-xs text-amber-600">
+                    <AlertCircle className="h-3 w-3 shrink-0" />
+                    {sqlParseError}
+                  </div>
+                )}
                 <div className="absolute right-5 top-1 flex gap-1">
-                  <button
-                    className="rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-sky-600 shadow-sm ring-1 ring-slate-200 transition-colors hover:bg-sky-50"
-                    onClick={event => { event.stopPropagation(); void copySql() }}
-                    title="Copy SQL"
-                  >
-                    Copy
-                  </button>
-                  <button
-                    className="rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-sky-600 shadow-sm ring-1 ring-slate-200 transition-colors hover:bg-sky-50"
-                    onClick={event => { event.stopPropagation(); void runPreview(compiled.sql) }}
-                    disabled={!compiled.sql || compiled.errors.length > 0}
-                    title="Run preview"
-                  >
-                    Run
-                  </button>
+                  {sqlEditing ? (
+                    <>
+                      <button
+                        className="rounded bg-sky-600 px-2 py-0.5 text-[10px] font-medium text-white shadow-sm transition-colors hover:bg-sky-700"
+                        onClick={event => { event.stopPropagation(); applySqlEdit() }}
+                        title="Apply SQL changes to ribbon (Ctrl+Enter)"
+                      >
+                        Apply
+                      </button>
+                      <button
+                        className="rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-slate-600 shadow-sm ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
+                        onClick={event => { event.stopPropagation(); cancelSqlEdit() }}
+                        title="Cancel editing (Esc)"
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        className="rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-sky-600 shadow-sm ring-1 ring-slate-200 transition-colors hover:bg-sky-50"
+                        onClick={event => { event.stopPropagation(); void copySql() }}
+                        title="Copy SQL"
+                      >
+                        Copy
+                      </button>
+                      <button
+                        className="rounded bg-white/90 px-2 py-0.5 text-[10px] font-medium text-sky-600 shadow-sm ring-1 ring-slate-200 transition-colors hover:bg-sky-50"
+                        onClick={event => { event.stopPropagation(); void runPreview(compiled.sql) }}
+                        disabled={!compiled.sql || compiled.errors.length > 0}
+                        title="Run preview"
+                      >
+                        Run
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -1533,25 +1556,18 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
 
           <div className="flex-1 overflow-hidden p-2">
             <div className="h-full overflow-hidden rounded-lg border border-slate-200 bg-white/90 shadow-[0_18px_60px_-28px_rgba(15,23,42,0.3)]">
-              <ResultsGrid rows={previewRows} loading={previewLoading} error={previewError} emptyState={resultsEmptyState} />
+              <TabbedResults
+                rows={previewRows}
+                loading={previewLoading}
+                error={previewError}
+                emptyState={resultsEmptyState}
+                datasourceId={definition.datasource}
+                tables={tables}
+              />
             </div>
           </div>
         </div>
 
-        {betaAiEnabled && (
-          <ChatSidebar
-            open={chatSidebarOpen}
-            onClose={() => setChatSidebarOpen(false)}
-            datasource={currentDatasource}
-            tables={tables}
-            definition={definition}
-            onApplyDefinition={patch => {
-              // Merge the AI-generated patch into the current definition
-              const merged = { ...definition, ...patch }
-              setDefinition(merged)
-            }}
-          />
-        )}
       </div>
 
       <Dialog open={sourceDialogOpen} onOpenChange={setSourceDialogOpen}>

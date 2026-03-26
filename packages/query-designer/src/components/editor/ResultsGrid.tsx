@@ -1,4 +1,4 @@
-import { Database, Loader2, SearchX, AlertCircle } from 'lucide-react'
+import { Loader2, SearchX, AlertCircle } from 'lucide-react'
 
 interface Props {
   rows: Record<string, unknown>[]
@@ -60,14 +60,6 @@ export function ResultsGrid({ rows, loading, error, emptyState }: Props) {
 
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-b-lg bg-white">
-      <div className="flex items-center justify-between border-b border-border bg-slate-50/90 px-4 py-2.5 text-xs text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <Database className="h-3.5 w-3.5" />
-          <span>{rows.length} row{rows.length === 1 ? '' : 's'} in preview</span>
-        </div>
-        <span>{columns.length} column{columns.length === 1 ? '' : 's'}</span>
-      </div>
-
       <div className="flex-1 overflow-auto">
         <table className="min-w-full border-separate border-spacing-0 text-sm">
           <thead className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur">

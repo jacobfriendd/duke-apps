@@ -3,7 +3,17 @@ import { Loader2, MessageSquare, Send, X, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import type { DatasourceInfo, DatasourceTable, QueryDefinition } from '@/types/query'
+import { generateId } from '@/lib/utils'
+import type {
+  DatasourceInfo,
+  DatasourceTable,
+  QueryDefinition,
+  QueryField,
+  CriteriaGroup,
+  CriteriaNode,
+  QueryJoin,
+  SortLimit,
+} from '@/types/query'
 
 interface ChatSidebarProps {
   open: boolean
@@ -58,7 +68,6 @@ async function callCompletion(prompt: string): Promise<string> {
 }
 
 function tryParseJsonPatch(text: string): Partial<QueryDefinition> | null {
-  // Look for JSON block in the response
   const blockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)```/)
   if (blockMatch) {
     try {
@@ -66,12 +75,10 @@ function tryParseJsonPatch(text: string): Partial<QueryDefinition> | null {
     } catch { /* not valid JSON */ }
   }
 
-  // Try to find a raw JSON object
   const jsonMatch = text.match(/\{[\s\S]*\}/)
   if (jsonMatch) {
     try {
       const parsed = JSON.parse(jsonMatch[0])
-      // Only treat as a patch if it has query-like keys
       if (parsed.fields || parsed.criteria || parsed.joins || parsed.sortLimit || parsed.table) {
         return parsed
       }
@@ -80,6 +87,140 @@ function tryParseJsonPatch(text: string): Partial<QueryDefinition> | null {
 
   return null
 }
+
+// ── Ensure every entity in the patch has an `id` ──────────────────────────
+
+function ensureFieldIds(fields: QueryField[]): QueryField[] {
+  return fields.map(f => ({ ...f, id: f.id || generateId() }))
+}
+
+function ensureCriteriaIds(node: CriteriaNode): CriteriaNode {
+  if (node.type === 'group') {
+    return {
+      ...node,
+      id: node.id || generateId(),
+      conditions: node.conditions.map(ensureCriteriaIds),
+    }
+  }
+  return { ...node, id: node.id || generateId() }
+}
+
+function ensureGroupIds(group: CriteriaGroup): CriteriaGroup {
+  return {
+    ...group,
+    id: group.id || generateId(),
+    conditions: group.conditions.map(ensureCriteriaIds),
+  }
+}
+
+function ensureJoinIds(joins: QueryJoin[]): QueryJoin[] {
+  return joins.map(j => ({ ...j, id: j.id || generateId() }))
+}
+
+/**
+ * Takes the AI's raw patch and the current definition, produces a merged
+ * QueryDefinition that the ribbon/compiler can understand.
+ *
+ * Strategy per key:
+ *  - fields: replace with patch (AI returns full desired field list)
+ *  - criteria: replace with patch (AI returns full criteria tree)
+ *  - joins: replace with patch (AI returns full join list)
+ *  - sortLimit: replace with patch
+ *  - scalar props (name, description, etc.): overwrite
+ */
+function applyPatch(
+  current: QueryDefinition,
+  patch: Partial<QueryDefinition>,
+): QueryDefinition {
+  const merged = { ...current }
+
+  if (patch.fields) {
+    merged.fields = ensureFieldIds(patch.fields)
+  }
+  if (patch.criteria) {
+    merged.criteria = ensureGroupIds(patch.criteria)
+  }
+  if (patch.joins) {
+    merged.joins = ensureJoinIds(patch.joins)
+  }
+  if (patch.sortLimit) {
+    merged.sortLimit = patch.sortLimit as SortLimit
+  }
+  if (patch.name !== undefined) merged.name = patch.name
+  if (patch.description !== undefined) merged.description = patch.description
+
+  return merged
+}
+
+// ── System prompt schema reference ────────────────────────────────────────
+
+const SCHEMA_REFERENCE = `
+## QueryDefinition JSON Schema
+
+You modify the query by returning a JSON patch. The patch is merged into the current definition.
+Return ONLY the keys you want to change. Every array you return REPLACES the existing array entirely,
+so always include existing items you want to keep.
+
+### fields (array of QueryField)
+Each field represents a column in the SELECT clause and appears in the ribbon's Columns tab.
+{
+  "column": "column_name",          // actual DB column name
+  "alias": "Display Name",          // shown in UI and used as output header
+  "aggregate": "none",              // "none"|"sum"|"count"|"avg"|"min"|"max"|"count_distinct"
+  "reference": {
+    "relation": "source",           // "source" = main table, "join" = joined table
+    "relationId": "",               // empty for source, join id for joined tables
+    "column": "column_name"         // same as column above
+  }
+}
+
+### criteria (CriteriaGroup — the WHERE clause, shown in the ribbon's Filters tab)
+{
+  "type": "group",
+  "operator": "AND",                // "AND" | "OR"
+  "conditions": [                   // array of conditions or nested groups
+    {
+      "type": "condition",
+      "field": "column_name",       // the column to filter on
+      "fieldRef": { "relation": "source", "column": "column_name" },
+      "operator": "equals",         // operators: equals, not_equals, greater_than, less_than,
+                                    //   greater_equal, less_equal, contains, not_contains,
+                                    //   starts_with, ends_with, is_null, is_not_null, in, not_in, between
+      "valueType": "literal",       // "literal" | "field" | "input"
+      "value": "Berlin"             // the filter value (string always)
+    }
+  ]
+}
+
+### joins (array of QueryJoin — shown in the ribbon's Joins tab)
+{
+  "table": "table_name",            // the table to join
+  "schema": "schema_name",          // schema of the joined table
+  "tableId": "schema+table_name",   // restId format
+  "alias": "short_alias",           // unique alias for this join
+  "type": "inner",                  // "inner"|"left"|"right"|"full"
+  "conditions": [
+    { "left": "source_column", "right": "joined_column" }
+  ]
+}
+
+### sortLimit (shown in the ribbon's Sort & Limit tab)
+{
+  "sorts": [
+    { "field": "column_name", "direction": "asc", "reference": { "relation": "source", "column": "column_name" } }
+  ],
+  "limit": 100,                     // optional
+  "offset": 0                       // optional
+}
+
+IMPORTANT RULES:
+- Do NOT include "id" fields — they are auto-generated.
+- Return the FULL array for any key you modify (fields, criteria.conditions, joins, sorts).
+  For example, to ADD a filter, return the entire criteria object including existing conditions plus the new one.
+- To REMOVE something, return the array without that item.
+- Do NOT write SQL. Only return QueryDefinition JSON patches.
+- Wrap the JSON in a \`\`\`json code block.
+`.trim()
 
 export function ChatSidebar({ open, onClose, datasource, tables, definition, onApplyDefinition }: ChatSidebarProps) {
   const datasourceId = datasource?.id ?? null
@@ -104,54 +245,66 @@ export function ChatSidebar({ open, onClose, datasource, tables, definition, onA
     })
 
     try {
-      // Search metadata using keywords from the user's message
       const keywords = prompt.split(/\s+/).slice(0, 5).join(' ')
       const metadata = await searchMetadata(datasourceId, keywords)
 
-      // Build conversation history for context
       const history = messages.slice(-6).map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n')
 
+      // Send the full current definition so the AI can see existing fields/criteria/joins
       const currentDef = JSON.stringify({
-        datasource: definition.datasource,
         schema: definition.schema,
         table: definition.table,
-        fields: definition.fields.map(f => ({ column: f.column, alias: f.alias, aggregate: f.aggregate })),
+        tableId: definition.tableId,
+        fields: definition.fields.map(f => ({
+          column: f.column,
+          alias: f.alias,
+          aggregate: f.aggregate,
+          reference: f.reference,
+          expression: f.expression,
+        })),
         criteria: definition.criteria,
-        joins: definition.joins.map(j => ({ table: j.table, schema: j.schema, type: j.type, alias: j.alias })),
+        joins: definition.joins.map(j => ({
+          table: j.table,
+          schema: j.schema,
+          tableId: j.tableId,
+          type: j.type,
+          alias: j.alias,
+          conditions: j.conditions,
+        })),
         sortLimit: definition.sortLimit,
-      })
+      }, null, 2)
 
       const fullPrompt = [
-        `You are a query design assistant that helps users build queries through a visual query builder.`,
-        `You work with a QueryDefinition JSON structure that has: fields, criteria, joins, sortLimit.`,
+        `You are a query design assistant for a visual query builder. Users describe what they want in plain English and you modify the query by returning a QueryDefinition JSON patch.`,
         '',
-        `Connected to a ${datasource?.type || 'SQL'} database. Available tables: ${tableList || 'none loaded yet'}.`,
+        SCHEMA_REFERENCE,
         '',
-        `Schema metadata:`,
+        `## Current context`,
+        `Database type: ${datasource?.type || 'SQL'}`,
+        `Available tables: ${tableList || 'none loaded yet'}`,
+        '',
+        `Schema metadata (columns, types, relationships):`,
         metadata,
         '',
-        `Current query definition: ${currentDef}`,
+        `Current query definition:`,
+        '```json',
+        currentDef,
+        '```',
         '',
         history ? `Conversation so far:\n${history}\n` : '',
         `User: ${prompt}`,
         '',
-        `Instructions:`,
-        `- If the user wants to modify the query, respond with a brief explanation followed by a JSON code block with the partial QueryDefinition patch.`,
-        `- When adding fields, each needs: column (name), alias (display label), aggregate ("none"|"count"|"sum"|"avg"|"min"|"max"|"count_distinct"), and reference: { relation: "source", column: "fieldname" }.`,
-        `- When adding criteria, use: type: "condition", field, operator (equals|not_equals|contains|is_null|is_not_null|in|between|greater_than|less_than), valueType: "literal", value.`,
-        `- If the user is just asking a question, respond with a helpful answer (no JSON needed).`,
-        `- Keep responses concise.`,
+        `Respond with a brief explanation of what you're changing, then a \`\`\`json code block with the patch. If the user is just asking a question, answer without JSON.`,
       ].join('\n')
 
       const response = await callCompletion(fullPrompt)
 
-      // Check if response contains a query patch
       const patch = tryParseJsonPatch(response)
       if (patch) {
-        onApplyDefinition(patch)
+        const merged = applyPatch(definition, patch)
+        onApplyDefinition(merged)
       }
 
-      // Clean the response for display (remove JSON blocks)
       const displayText = response
         .replace(/```(?:json)?\s*\n?[\s\S]*?```/g, '')
         .trim() || (patch ? 'Applied changes to your query.' : response.trim())
@@ -180,11 +333,11 @@ export function ChatSidebar({ open, onClose, datasource, tables, definition, onA
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
         <div className="flex items-center gap-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-violet-500 to-purple-600 shadow-sm">
+          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-sky-500 to-blue-600 shadow-sm">
             <Sparkles className="h-3 w-3 text-white" />
           </div>
           <span className="text-sm font-semibold text-slate-800">AI Assistant</span>
-          <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-600">Beta</span>
+          <span className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-sky-600">Beta</span>
         </div>
         <Button variant="ghost" size="icon" className="h-6 w-6 rounded-md" onClick={onClose}>
           <X className="h-3.5 w-3.5" />
@@ -198,7 +351,7 @@ export function ChatSidebar({ open, onClose, datasource, tables, definition, onA
             <MessageSquare className="mb-3 h-8 w-8 text-slate-300" />
             <p className="text-sm font-medium text-slate-500">Ask me to build your query</p>
             <p className="mt-1 text-xs text-slate-400">
-              Try: "Show me all customers with orders over $100" or "Add a filter for active users"
+              Try: "Only show rows where city is Berlin" or "Add a count of orders grouped by customer"
             </p>
           </div>
         )}
@@ -217,7 +370,7 @@ export function ChatSidebar({ open, onClose, datasource, tables, definition, onA
           {loading && (
             <div className="flex justify-start">
               <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-500" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-sky-500" />
                 <span className="text-xs text-slate-500">Thinking...</span>
               </div>
             </div>
@@ -243,7 +396,7 @@ export function ChatSidebar({ open, onClose, datasource, tables, definition, onA
           />
           <Button
             size="sm"
-            className="h-8 w-8 shrink-0 rounded-md bg-violet-600 p-0 text-white hover:bg-violet-700"
+            className="h-8 w-8 shrink-0 rounded-md bg-sky-600 p-0 text-white hover:bg-sky-700"
             onClick={() => void handleSubmit()}
             disabled={!input.trim() || !datasourceId || loading}
           >
