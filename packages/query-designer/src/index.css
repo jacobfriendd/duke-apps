@@ -1,0 +1,266 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.85rem;
+  --background: 210 50% 98%;
+  --foreground: 216 31% 18%;
+  --card: 0 0% 100%;
+  --card-foreground: 216 31% 18%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 216 31% 18%;
+  --primary: 206 100% 39%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 25% 95%;
+  --secondary-foreground: 216 22% 32%;
+  --muted: 210 24% 95%;
+  --muted-foreground: 215 16% 44%;
+  --accent: 208 100% 97%;
+  --accent-foreground: 206 100% 30%;
+  --destructive: 0 78% 53%;
+  --border: 214 27% 88%;
+  --input: 214 27% 88%;
+  --ring: 206 100% 39%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background:
+    radial-gradient(circle at top left, rgba(14, 116, 220, 0.16), transparent 28%),
+    linear-gradient(180deg, #f9fcff 0%, #eef4fb 100%);
+  color: hsl(var(--foreground));
+  font-family: 'Segoe UI', 'Aptos', 'Calibri', 'Candara', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ─── Office-style Ribbon ─── */
+
+.ribbon-container {
+  border-top: 1px solid #d1d9e0;
+  background: #f3f6fb;
+  padding: 0;
+}
+
+/* Tab strip – sits on top of the panel */
+.ribbon-tab-strip {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 0;
+  height: auto;
+  padding: 4px 12px 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+.ribbon-tab {
+  position: relative;
+  padding: 5px 14px 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #444e5c;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  transition: color 0.1s, background 0.1s;
+  box-shadow: none;
+}
+
+.ribbon-tab:hover {
+  color: #0f6cbd;
+  background: rgba(15, 108, 189, 0.06);
+}
+
+/* Active tab merges into the ribbon panel */
+.ribbon-tab[data-state="active"] {
+  color: #0f6cbd;
+  font-weight: 600;
+  background: #f9fbfe;
+  border-color: #c8d1dc;
+  /* Cover the panel's top border so tab merges in */
+  margin-bottom: -1px;
+  padding-bottom: 5px;
+  z-index: 1;
+}
+
+/* Ribbon content panel */
+.ribbon-panel {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  min-height: 82px;
+  padding: 6px 12px 0;
+  overflow-x: auto;
+  background: linear-gradient(180deg, #f9fbfe 0%, #f0f4fa 100%);
+  border-top: 1px solid #c8d1dc;
+  border-bottom: 1px solid #c8d1dc;
+}
+
+/* Groups with vertical separators & bottom labels */
+.ribbon-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: fit-content;
+  position: relative;
+  padding-right: 10px;
+  margin-right: 10px;
+}
+
+/* Vertical separator between groups */
+.ribbon-group::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, #c0c9d4 20%, #c0c9d4 80%, transparent);
+}
+
+.ribbon-group:last-child::after {
+  display: none;
+}
+
+.ribbon-group:last-child {
+  padding-right: 0;
+  margin-right: 0;
+}
+
+/* Group label at the bottom */
+.ribbon-group-label {
+  margin-top: auto;
+  padding: 3px 0 4px;
+  font-size: 10px;
+  font-weight: 500;
+  color: #6b7a8d;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-align: center;
+  border-top: 1px solid #dde3eb;
+  width: 100%;
+}
+
+/* Command buttons – borderless until hovered */
+.ribbon-command-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 64px;
+  height: 56px;
+  padding: 4px 2px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #3b4a5a;
+  font-size: 10px;
+  font-weight: 500;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.ribbon-command-button:hover {
+  background: rgba(15, 108, 189, 0.08);
+  border-color: rgba(15, 108, 189, 0.2);
+  color: #0f6cbd;
+}
+
+.ribbon-command-button:active {
+  background: rgba(15, 108, 189, 0.15);
+  border-color: rgba(15, 108, 189, 0.3);
+}
+
+.ribbon-command-button-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Scrollable item list inside ribbon groups */
+.ribbon-item-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 54px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 200px;
+  max-width: 400px;
+  padding-right: 4px;
+}
+
+.ribbon-item-list::-webkit-scrollbar {
+  width: 3px;
+}
+
+.ribbon-item-list::-webkit-scrollbar-thumb {
+  background: #c0c9d4;
+  border-radius: 2px;
+}
+
+/* ─── Query Tabs bar ─── */
+
+.query-tabs::-webkit-scrollbar {
+  height: 3px;
+}
+
+.query-tabs::-webkit-scrollbar-thumb {
+  background: #c0c9d4;
+  border-radius: 2px;
+}
+
+/* ─── Chat sidebar transition ─── */
+
+.chat-sidebar-enter {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+.chat-sidebar-active {
+  transform: translateX(0);
+  opacity: 1;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}

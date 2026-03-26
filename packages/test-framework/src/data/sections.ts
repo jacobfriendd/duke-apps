@@ -1,0 +1,385 @@
+import type { SurveySection } from '@/types'
+
+export const surveySections: SurveySection[] = [
+  // ── Section 1: Welcome / Info ──
+  {
+    id: 'welcome',
+    title: 'Welcome',
+    description:
+      'Thank you for participating in the Query Designer usability test. Please tell us a bit about yourself before we begin. This survey should take approximately 20\u201330 minutes.',
+    questions: [
+      {
+        id: 'name',
+        type: 'text',
+        label: 'Your Name',
+        placeholder: 'Enter your name (optional)',
+        required: false,
+      },
+      {
+        id: 'role',
+        type: 'text',
+        label: 'Your Role / Title',
+        placeholder: 'e.g. Report Developer, DBA, Analyst',
+        required: true,
+      },
+      {
+        id: 'sql-experience',
+        type: 'choice',
+        label: 'What is your experience level with SQL / databases?',
+        options: ['None', 'Beginner', 'Intermediate', 'Advanced'],
+        required: true,
+      },
+      {
+        id: 'old-qd-experience',
+        type: 'choice',
+        label: 'How much experience do you have with the old Informer Query Designer?',
+        options: ['Never used it', 'Used it a few times', 'Use it regularly'],
+        required: true,
+      },
+    ],
+  },
+
+  // ── Section 2: Standard Query Task ──
+  {
+    id: 'standard-query',
+    title: 'Standard Query',
+    description:
+      'In this task you will build a basic query using the visual Query Designer interface. Follow the steps below, then answer the questions.',
+    questions: [
+      {
+        id: 'standard-query-instructions',
+        type: 'instructions',
+        label: 'Steps to complete',
+        steps: [
+          'Open the Query Designer and choose a datasource.',
+          'Select a table from the schema browser.',
+          'Add 3\u20134 columns to the SELECT clause.',
+          'Add a WHERE filter on one of the columns.',
+          'Click the Preview button to run the query and inspect the results.',
+        ],
+      },
+      {
+        id: 'standard-query-ease',
+        type: 'rating',
+        label: 'How easy was it to build this query?',
+        description: '1 = Very Difficult, 5 = Very Easy',
+        required: true,
+      },
+      {
+        id: 'standard-query-clarity',
+        type: 'rating',
+        label: 'How clear were the column / field labels?',
+        description: '1 = Very Unclear, 5 = Very Clear',
+        required: true,
+      },
+      {
+        id: 'standard-query-confusion',
+        type: 'textarea',
+        label: 'What was confusing, if anything?',
+        placeholder: 'Describe anything that was unclear or difficult\u2026',
+      },
+    ],
+  },
+
+  // ── Section 3: Natural Language Query Task ──
+  {
+    id: 'nl-query',
+    title: 'Natural Language Query',
+    description:
+      'Try the AI-powered natural language feature to generate a query from a plain English description.',
+    questions: [
+      {
+        id: 'nl-query-instructions',
+        type: 'instructions',
+        label: 'Steps to complete',
+        steps: [
+          'Enable the Beta AI toggle in the toolbar.',
+          'In the natural language bar, type a description of the query you want (e.g. "Show all orders from 2024 with a total over $500").',
+          'Review the generated SQL and the visual query that appears.',
+          'Make any adjustments if the result was not what you expected.',
+        ],
+      },
+      {
+        id: 'nl-query-understanding',
+        type: 'rating',
+        label: 'How well did the AI understand your request?',
+        description: '1 = Did Not Understand, 5 = Understood Perfectly',
+        required: true,
+      },
+      {
+        id: 'nl-query-usefulness',
+        type: 'rating',
+        label: 'How useful is the natural language feature?',
+        description: '1 = Not Useful, 5 = Extremely Useful',
+        required: true,
+      },
+      {
+        id: 'nl-query-suggestions',
+        type: 'textarea',
+        label: 'Any suggestions for the AI feature?',
+        placeholder: 'Ideas for improving the natural language experience\u2026',
+      },
+    ],
+  },
+
+  // ── Section 4: Sub-select Task ──
+  {
+    id: 'sub-select',
+    title: 'Sub-selects',
+    description:
+      'Create a sub-select (nested query) that builds on a main query to test the multi-stage query building experience.',
+    questions: [
+      {
+        id: 'sub-select-instructions',
+        type: 'instructions',
+        label: 'Steps to complete',
+        steps: [
+          'Start with a main query on a table of your choice.',
+          'Add a sub-select stage that builds on the main query (e.g. aggregate or filter the results further).',
+          'Review how the stages relate to each other in the interface.',
+          'Run the preview to verify the results.',
+        ],
+      },
+      {
+        id: 'sub-select-intuitive',
+        type: 'rating',
+        label: 'How intuitive was creating sub-selects?',
+        description: '1 = Very Confusing, 5 = Very Intuitive',
+        required: true,
+      },
+      {
+        id: 'sub-select-relationship',
+        type: 'rating',
+        label: 'How clear was the relationship between stages?',
+        description: '1 = Very Unclear, 5 = Very Clear',
+        required: true,
+      },
+      {
+        id: 'sub-select-comments',
+        type: 'textarea',
+        label: 'Comments on the sub-select feature?',
+        placeholder: 'Share your thoughts on the sub-select experience\u2026',
+      },
+    ],
+  },
+
+  // ── Section 5: Joins Task ──
+  {
+    id: 'joins',
+    title: 'Joins',
+    description:
+      'Add a join to connect two tables. Try both the suggested joins and adding a manual join.',
+    questions: [
+      {
+        id: 'joins-instructions',
+        type: 'instructions',
+        label: 'Steps to complete',
+        steps: [
+          'Start a query on a table that has relationships (e.g. orders).',
+          'Use the "Add Join" feature to connect a related table.',
+          'Try accepting a suggested join if one appears.',
+          'Try adding a manual join by selecting the tables and columns yourself.',
+          'Preview the results to verify the join worked.',
+        ],
+      },
+      {
+        id: 'joins-ease',
+        type: 'rating',
+        label: 'How easy was it to add joins?',
+        description: '1 = Very Difficult, 5 = Very Easy',
+        required: true,
+      },
+      {
+        id: 'joins-suggestions-helpful',
+        type: 'rating',
+        label: 'How helpful were the suggested joins?',
+        description: '1 = Not Helpful, 5 = Very Helpful',
+        required: true,
+      },
+      {
+        id: 'joins-feedback',
+        type: 'textarea',
+        label: 'Any feedback on the join experience?',
+        placeholder: 'What worked well or could be improved\u2026',
+      },
+    ],
+  },
+
+  // ── Section 6: Sort, Filter & Limit Task ──
+  {
+    id: 'sort-filter-limit',
+    title: 'Sort, Filter & Limit',
+    description:
+      'Explore the sorting, filtering, and row limit features of the Query Designer.',
+    questions: [
+      {
+        id: 'sfl-instructions',
+        type: 'instructions',
+        label: 'Steps to complete',
+        steps: [
+          'Add one or more sort criteria to your query (ascending / descending).',
+          'Set a row limit on the results (e.g. top 100 rows).',
+          'Add multiple filter conditions and combine them with AND / OR logic.',
+          'Preview the results to verify everything works as expected.',
+        ],
+      },
+      {
+        id: 'sfl-sort-limit',
+        type: 'rating',
+        label: 'How intuitive were the sort and limit controls?',
+        description: '1 = Very Confusing, 5 = Very Intuitive',
+        required: true,
+      },
+      {
+        id: 'sfl-filters',
+        type: 'rating',
+        label: 'How easy was it to combine multiple filters?',
+        description: '1 = Very Difficult, 5 = Very Easy',
+        required: true,
+      },
+      {
+        id: 'sfl-feedback',
+        type: 'textarea',
+        label: 'Any feedback on filters / sorting?',
+        placeholder: 'Share your experience with these features\u2026',
+      },
+    ],
+  },
+
+  // ── Section 7: Save & Export Task ──
+  {
+    id: 'save-export',
+    title: 'Save & Export',
+    description:
+      'Test saving your work and exporting the generated SQL.',
+    questions: [
+      {
+        id: 'save-export-instructions',
+        type: 'instructions',
+        label: 'Steps to complete',
+        steps: [
+          'Save your query using Ctrl+S (or Cmd+S) or the Save button.',
+          'Copy the generated SQL to your clipboard using the Copy SQL button.',
+          'Export the SQL as a file using the Export SQL option.',
+          'Close the query tab, then re-open your saved query to verify it loads correctly.',
+        ],
+      },
+      {
+        id: 'save-export-convenience',
+        type: 'rating',
+        label: 'How convenient was the save experience?',
+        description: '1 = Very Inconvenient, 5 = Very Convenient',
+        required: true,
+      },
+      {
+        id: 'save-export-usefulness',
+        type: 'rating',
+        label: 'How useful is the SQL export feature?',
+        description: '1 = Not Useful, 5 = Very Useful',
+        required: true,
+      },
+      {
+        id: 'save-export-comments',
+        type: 'textarea',
+        label: 'Comments on save / export?',
+        placeholder: 'Any feedback on saving or exporting\u2026',
+      },
+    ],
+  },
+
+  // ── Section 8: Comparison with Old Query Designer ──
+  {
+    id: 'comparison',
+    title: 'Comparison',
+    description:
+      'If you have used the old Informer Query Designer, please compare it with the new one. If you have not used the old one, feel free to skip this section.',
+    questions: [
+      {
+        id: 'comparison-preference',
+        type: 'choice',
+        label: 'Which do you prefer overall?',
+        options: [
+          'New Query Designer',
+          'Old Query Designer',
+          'About the same',
+          'Haven\'t used the old one',
+        ],
+        required: false,
+      },
+      {
+        id: 'comparison-easier',
+        type: 'rating',
+        label: 'The new Query Designer is easier to use than the old one.',
+        description: '1 = Strongly Disagree, 5 = Strongly Agree',
+      },
+      {
+        id: 'comparison-professional',
+        type: 'rating',
+        label: 'The new Query Designer looks more professional.',
+        description: '1 = Strongly Disagree, 5 = Strongly Agree',
+      },
+      {
+        id: 'comparison-features',
+        type: 'rating',
+        label: 'The new Query Designer has better features.',
+        description: '1 = Strongly Disagree, 5 = Strongly Agree',
+      },
+      {
+        id: 'comparison-old-better',
+        type: 'textarea',
+        label: 'What does the old Query Designer do better?',
+        placeholder: 'Anything the old QD handles better\u2026',
+      },
+      {
+        id: 'comparison-new-better',
+        type: 'textarea',
+        label: 'What does the new Query Designer do better?',
+        placeholder: 'Anything the new QD handles better\u2026',
+      },
+    ],
+  },
+
+  // ── Section 9: Open-Ended Feedback ──
+  {
+    id: 'open-ended',
+    title: 'Open-Ended Feedback',
+    description:
+      'Please share any additional thoughts. All fields are optional but greatly appreciated.',
+    questions: [
+      {
+        id: 'favorite-feature',
+        type: 'textarea',
+        label: 'What was your favorite feature?',
+        placeholder: 'Tell us what stood out to you\u2026',
+      },
+      {
+        id: 'most-improve',
+        type: 'textarea',
+        label: 'What would you most want to improve?',
+        placeholder: 'What needs the most work\u2026',
+      },
+      {
+        id: 'other-comments',
+        type: 'textarea',
+        label: 'Any other comments or suggestions?',
+        placeholder: 'Anything else you\'d like to share\u2026',
+      },
+      {
+        id: 'overall-rating',
+        type: 'rating',
+        label: 'Overall, how would you rate the new Query Designer?',
+        description: '1 = Very Poor, 5 = Excellent',
+        required: true,
+      },
+    ],
+  },
+
+  // ── Section 10: Thank You ──
+  {
+    id: 'thank-you',
+    title: 'Thank You',
+    description:
+      'Your feedback has been recorded. Thank you for taking the time to evaluate the new Query Designer \u2014 your input is invaluable in helping us build a better product.',
+    questions: [],
+  },
+]

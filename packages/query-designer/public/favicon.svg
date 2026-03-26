@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#1e2d40"/>
+  <!-- Stacked bars representing data layers -->
+  <rect x="96" y="300" width="80" height="116" rx="8" fill="#3b82f6" opacity="0.35"/>
+  <rect x="216" y="220" width="80" height="196" rx="8" fill="#3b82f6" opacity="0.55"/>
+  <rect x="336" y="140" width="80" height="276" rx="8" fill="#3b82f6"/>
+  <!-- Connection lines suggesting CTE / subquery linkage -->
+  <line x1="136" y1="300" x2="136" y2="176" stroke="#3b82f6" stroke-width="3" opacity="0.4"/>
+  <line x1="256" y1="220" x2="256" y2="176" stroke="#3b82f6" stroke-width="3" opacity="0.4"/>
+  <circle cx="136" cy="168" r="8" fill="#3b82f6" opacity="0.5"/>
+  <circle cx="256" cy="168" r="8" fill="#3b82f6" opacity="0.5"/>
+  <circle cx="376" cy="132" r="8" fill="#3b82f6"/>
+  <line x1="136" y1="168" x2="256" y2="168" stroke="#3b82f6" stroke-width="3" opacity="0.4"/>
+  <line x1="256" y1="168" x2="376" y2="132" stroke="#3b82f6" stroke-width="3" opacity="0.7"/>
+</svg>

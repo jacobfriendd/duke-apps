@@ -1,0 +1,32 @@
+{
+  "name": "@entrinsik/test-framework",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "informer": {
+    "type": "app",
+    "id": "test-framework",
+    "name": "Query Designer Test Framework",
+    "description": "User testing questionnaire for the Query Designer"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "lucide-react": "^0.511.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@entrinsik/vite-plugin-informer": "^1.0.0",
+    "@tailwindcss/vite": "^4.1.7",
+    "@types/react": "^19.1.4",
+    "@types/react-dom": "^19.1.5",
+    "@vitejs/plugin-react": "^4.5.2",
+    "tailwindcss": "^4.1.7",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.0"
+  }
+}

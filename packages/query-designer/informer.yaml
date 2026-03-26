@@ -1,0 +1,15 @@
+access:
+  datasources:
+    - admin:northwind
+    - admin:banner
+    - admin:sagitta
+    - admin:ams360
+  datasets: []
+  queries: []
+  integrations: []
+  apis:
+    - POST /api/models/go_everyday/_chat
+    - POST /api/models/go_everyday/_completion
+    - POST /api/models/go_everyday/_object
+    - GET /api/datasources-list
+    - POST /api/datasources/*/_search-metadata

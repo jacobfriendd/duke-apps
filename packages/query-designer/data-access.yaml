@@ -1,0 +1,141 @@
+# Data Access Configuration
+# ========================
+# This file controls which Informer APIs your report can access.
+# Without this file, all API access is blocked (secure by default).
+#
+# Documentation: https://docs.entrinsik.com/informer/magic-reports/data-access
+
+# ============================================================================
+# DATASETS
+# ============================================================================
+# Grant access to dataset search and field metadata.
+# Each entry generates:
+#   - POST /api/datasets/{id}/_search
+#   - GET /api/datasets/{id}/fields
+#
+# Simple access (full dataset):
+#   datasets:
+#     - admin:sales-data
+#     - admin:customers
+#
+# With row-level security (filter injected server-side):
+#   datasets:
+#     - id: admin:orders
+#       filter:
+#         region: $user.custom.region      # User only sees their region
+#         sales_rep: $user.username        # User only sees their own records
+#
+datasets: []
+
+# ============================================================================
+# QUERIES
+# ============================================================================
+# Grant access to execute saved queries.
+# Each entry generates:
+#   - POST /api/queries/{id}/_execute
+#
+# Example:
+#   queries:
+#     - admin:daily-summary
+#     - admin:monthly-report
+#
+queries: []
+
+# ============================================================================
+# INTEGRATIONS
+# ============================================================================
+# Grant access to make requests through integrations (Salesforce, REST APIs, etc.)
+# Each entry generates:
+#   - POST /api/integrations/{id}/request
+#
+# Simple access:
+#   integrations:
+#     - salesforce
+#     - quickbooks
+#
+# With credential injection (headers/params expanded server-side, never exposed to JS):
+#   integrations:
+#     - id: partner-api
+#       headers:
+#         Authorization: Bearer $user.custom.partnerToken
+#         X-Client-ID: $tenant.id
+#       params:
+#         user_id: $user.custom.externalId
+#
+# With path restrictions (only allow specific endpoints):
+#   integrations:
+#     - id: salesforce
+#       paths:
+#         - /data/*/query
+#         - /data/*/sobjects/*
+#
+integrations: []
+
+# ============================================================================
+# DATASOURCES
+# ============================================================================
+# Grant access to run SQL queries against datasources.
+# Each entry generates:
+#   - POST /api/datasources/{id}/_query
+#
+# Example:
+#   datasources:
+#     - postgres-main
+#     - mysql-analytics
+#
+datasources:
+  - admin:northwind
+  - admin:banner
+  - admin:sagitta
+  - admin:ams360
+
+# ============================================================================
+# LIBRARIES
+# ============================================================================
+# Grant access to read files from other libraries.
+# Each entry generates:
+#   - GET /api/libraries/{id}/contents/*
+#
+# Example:
+#   libraries:
+#     - admin:shared-assets
+#     - admin:common-templates
+#
+libraries: []
+
+# ============================================================================
+# RAW API ACCESS (Advanced)
+# ============================================================================
+# For edge cases not covered by resource types above.
+# Specify exact method and path.
+#
+# Example:
+#   apis:
+#     - POST /api/custom/endpoint
+#     - GET /api/special/resource
+#
+apis:
+  - POST /api/models/go_everyday/_chat
+  - POST /api/models/go_everyday/_completion
+  - POST /api/models/go_everyday/_object
+  - GET /api/datasources-list
+  - POST /api/datasources/*/_search-metadata
+
+# ============================================================================
+# VARIABLE REFERENCE
+# ============================================================================
+# Variables are expanded server-side, keeping sensitive values secure.
+#
+# User variables:
+#   $user.username      - Login name
+#   $user.email         - Email address
+#   $user.displayName   - Full name (e.g., "John Smith")
+#   $user.custom.xxx    - Custom user field value
+#
+# Tenant variables:
+#   $tenant.id          - Tenant identifier
+#
+# Report variables:
+#   $report.id          - Report UUID
+#   $report.name        - Report display name
+#
