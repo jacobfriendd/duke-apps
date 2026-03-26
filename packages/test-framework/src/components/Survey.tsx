@@ -126,10 +126,17 @@ export function Survey() {
   }, [currentIndex, navigateTo])
 
   const handleSubmit = useCallback(() => {
-    setResponse((prev) => ({
-      ...prev,
-      completedAt: new Date().toISOString(),
-    }))
+    const completedAt = new Date().toISOString()
+    setResponse((prev) => {
+      const updated = { ...prev, completedAt }
+      // Submit to server
+      fetch('/api/_server/responses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      }).catch((err) => console.warn('Server submit failed, localStorage backup retained', err))
+      return updated
+    })
     setCompletedSections((prev) => {
       const next = new Set(prev)
       next.add(currentSection.id)
@@ -257,7 +264,7 @@ export function Survey() {
             Query Designer Test Framework
           </span>
           <span className="text-xs text-muted-foreground">
-            Responses saved locally
+            Responses saved
           </span>
         </div>
       </div>

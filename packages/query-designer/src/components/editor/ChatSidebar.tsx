@@ -1,7 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
 import { Loader2, MessageSquare, Send, X, Sparkles } from 'lucide-react'
-import { useChat } from '@ai-sdk/react'
-import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from 'ai'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -22,158 +20,158 @@ interface ChatMessage {
   content: string
 }
 
+async function searchMetadata(datasourceId: string, query: string): Promise<string> {
+  try {
+    const res = await fetch(`/api/datasources/${encodeURIComponent(datasourceId)}/_search-metadata`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+    })
+    if (!res.ok) return '(metadata search failed)'
+    const data = await res.json()
+    return JSON.stringify(data, null, 2)
+  } catch {
+    return '(metadata search unavailable)'
+  }
+}
+
+async function callCompletion(prompt: string): Promise<string> {
+  const res = await fetch('/api/models/go_everyday/_completion', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt }),
+  })
+  if (!res.ok) throw new Error('AI request failed')
+
+  const text = await res.text()
+  const parts: string[] = []
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('data: ')) continue
+    try {
+      const event = JSON.parse(line.slice(6))
+      if (event.type === 'text-delta' && event.delta) {
+        parts.push(event.delta)
+      }
+    } catch { /* skip */ }
+  }
+  return parts.join('')
+}
+
+function tryParseJsonPatch(text: string): Partial<QueryDefinition> | null {
+  // Look for JSON block in the response
+  const blockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)```/)
+  if (blockMatch) {
+    try {
+      return JSON.parse(blockMatch[1].trim())
+    } catch { /* not valid JSON */ }
+  }
+
+  // Try to find a raw JSON object
+  const jsonMatch = text.match(/\{[\s\S]*\}/)
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0])
+      // Only treat as a patch if it has query-like keys
+      if (parsed.fields || parsed.criteria || parsed.joins || parsed.sortLimit || parsed.table) {
+        return parsed
+      }
+    } catch { /* not valid JSON */ }
+  }
+
+  return null
+}
+
 export function ChatSidebar({ open, onClose, datasource, tables, definition, onApplyDefinition }: ChatSidebarProps) {
   const datasourceId = datasource?.id ?? null
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [settled, setSettled] = useState(false)
+  const [loading, setLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
-
-  const datasourceIdRef = useRef(datasourceId)
-  datasourceIdRef.current = datasourceId
-  const definitionRef = useRef(definition)
-  definitionRef.current = definition
-  const onApplyRef = useRef(onApplyDefinition)
-  onApplyRef.current = onApplyDefinition
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const addToolOutputRef = useRef<((opts: { tool: string; toolCallId: string; output: any }) => void) | null>(null)
 
   const tableList = tables.map(t => `${t.schemaId}.${t.mappingId}`).join(', ')
 
-  const tools = {
-    searchSchema: {
-      description: 'Search tables, fields, and relationships by keyword. ALWAYS call this first to discover exact field names.',
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          query: { type: 'string', description: 'Keyword to search for' },
-        },
-        required: ['query'],
-      },
-    },
-    applyQueryDesign: {
-      description: 'Apply changes to the visual query builder. Provide a partial QueryDefinition JSON object with only the fields you want to change. The user will review and can tweak before running.',
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          patch: { type: 'object', description: 'Partial QueryDefinition JSON to merge into the current design' },
-          explanation: { type: 'string', description: 'Brief explanation of what was changed' },
-        },
-        required: ['patch', 'explanation'],
-      },
-    },
-    respondToUser: {
-      description: 'Send a text response to the user. Use this to explain what you did or ask for clarification.',
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          message: { type: 'string', description: 'Message to display to the user' },
-        },
-        required: ['message'],
-      },
-    },
-  }
-
-  const { sendMessage, addToolOutput, status } = useChat({
-    transport: new DefaultChatTransport({
-      api: '/api/models/go_everyday/_chat',
-      body: {
-        tools,
-        system: [
-          'You are a query design assistant that helps users build queries through the visual query builder.',
-          'You work with a QueryDefinition JSON structure that has: fields, criteria, joins, sortLimit, inputs, and subqueries.',
-          '',
-          `Connected to a ${datasource?.type || 'SQL'} database. Available tables: ${tableList || 'none loaded yet'}.`,
-          '',
-          `Current query definition: ${JSON.stringify({
-            datasource: definition.datasource,
-            schema: definition.schema,
-            table: definition.table,
-            fields: definition.fields.map(f => ({ column: f.column, alias: f.alias, aggregate: f.aggregate })),
-            criteria: definition.criteria,
-            joins: definition.joins.map(j => ({ table: j.table, schema: j.schema, type: j.type, alias: j.alias })),
-            sortLimit: definition.sortLimit,
-          })}`,
-          '',
-          'Workflow:',
-          '1. searchSchema to discover exact field/table names.',
-          '2. applyQueryDesign to modify the visual builder with a partial QueryDefinition patch.',
-          '3. respondToUser to explain what you changed.',
-          '',
-          'When adding fields, each field needs: column (name), alias (display label), aggregate ("none"|"count"|"sum"|"avg"|"min"|"max"|"count_distinct"), and optionally reference: { relation: "source"|"join", column: "..." }.',
-          'When adding criteria conditions, each needs: type: "condition", field, operator (equals|not_equals|contains|starts_with|ends_with|greater_than|less_than|is_null|is_not_null|in|between), valueType: "literal"|"field"|"input", value.',
-          'When adding joins, each needs: table, schema, alias, type (inner|left|right|full), conditions: [{ left, right, leftRef, rightRef }].',
-          '',
-          'IMPORTANT: Always use searchSchema first to find exact names. Never guess column or table names.',
-          'Always call respondToUser at the end to explain what was changed.',
-        ].join('\n'),
-      },
-    }),
-    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
-    async onToolCall({ toolCall }) {
-      const emit = addToolOutputRef.current!
-      const dsId = datasourceIdRef.current
-
-      if (toolCall.toolName === 'searchSchema') {
-        if (!dsId) {
-          emit({ tool: 'searchSchema', toolCallId: toolCall.toolCallId, output: { error: 'No datasource selected' } })
-          return
-        }
-        const args = toolCall.input as { query: string }
-        const res = await fetch(`/api/datasources/${encodeURIComponent(dsId)}/_search-metadata`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: args.query }),
-        })
-        const data = await res.json()
-        emit({ tool: 'searchSchema', toolCallId: toolCall.toolCallId, output: data })
-      } else if (toolCall.toolName === 'applyQueryDesign') {
-        const args = toolCall.input as { patch: Partial<QueryDefinition>; explanation: string }
-        onApplyRef.current(args.patch)
-        setMessages(prev => [...prev, {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: args.explanation,
-        }])
-        setSettled(true)
-        emit({ tool: 'applyQueryDesign', toolCallId: toolCall.toolCallId, output: { success: true } })
-      } else if (toolCall.toolName === 'respondToUser') {
-        const args = toolCall.input as { message: string }
-        setMessages(prev => [...prev, {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: args.message,
-        }])
-        setSettled(true)
-        emit({ tool: 'respondToUser', toolCallId: toolCall.toolCallId, output: { acknowledged: true } })
-      }
-    },
-  })
-
-  addToolOutputRef.current = addToolOutput
-
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = useCallback(async () => {
     const prompt = input.trim()
-    if (!prompt) return
+    if (!prompt || !datasourceId) return
 
-    setMessages(prev => [...prev, {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: prompt,
-    }])
+    const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: prompt }
+    setMessages(prev => [...prev, userMsg])
     setInput('')
-    setSettled(false)
-
-    sendMessage({
-      parts: [{ type: 'text', text: prompt }],
-    })
+    setLoading(true)
 
     requestAnimationFrame(() => {
       scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
     })
-  }, [input, sendMessage])
 
-  const isLoading = (status === 'submitted' || status === 'streaming') && !settled
+    try {
+      // Search metadata using keywords from the user's message
+      const keywords = prompt.split(/\s+/).slice(0, 5).join(' ')
+      const metadata = await searchMetadata(datasourceId, keywords)
+
+      // Build conversation history for context
+      const history = messages.slice(-6).map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n')
+
+      const currentDef = JSON.stringify({
+        datasource: definition.datasource,
+        schema: definition.schema,
+        table: definition.table,
+        fields: definition.fields.map(f => ({ column: f.column, alias: f.alias, aggregate: f.aggregate })),
+        criteria: definition.criteria,
+        joins: definition.joins.map(j => ({ table: j.table, schema: j.schema, type: j.type, alias: j.alias })),
+        sortLimit: definition.sortLimit,
+      })
+
+      const fullPrompt = [
+        `You are a query design assistant that helps users build queries through a visual query builder.`,
+        `You work with a QueryDefinition JSON structure that has: fields, criteria, joins, sortLimit.`,
+        '',
+        `Connected to a ${datasource?.type || 'SQL'} database. Available tables: ${tableList || 'none loaded yet'}.`,
+        '',
+        `Schema metadata:`,
+        metadata,
+        '',
+        `Current query definition: ${currentDef}`,
+        '',
+        history ? `Conversation so far:\n${history}\n` : '',
+        `User: ${prompt}`,
+        '',
+        `Instructions:`,
+        `- If the user wants to modify the query, respond with a brief explanation followed by a JSON code block with the partial QueryDefinition patch.`,
+        `- When adding fields, each needs: column (name), alias (display label), aggregate ("none"|"count"|"sum"|"avg"|"min"|"max"|"count_distinct"), and reference: { relation: "source", column: "fieldname" }.`,
+        `- When adding criteria, use: type: "condition", field, operator (equals|not_equals|contains|is_null|is_not_null|in|between|greater_than|less_than), valueType: "literal", value.`,
+        `- If the user is just asking a question, respond with a helpful answer (no JSON needed).`,
+        `- Keep responses concise.`,
+      ].join('\n')
+
+      const response = await callCompletion(fullPrompt)
+
+      // Check if response contains a query patch
+      const patch = tryParseJsonPatch(response)
+      if (patch) {
+        onApplyDefinition(patch)
+      }
+
+      // Clean the response for display (remove JSON blocks)
+      const displayText = response
+        .replace(/```(?:json)?\s*\n?[\s\S]*?```/g, '')
+        .trim() || (patch ? 'Applied changes to your query.' : response.trim())
+
+      const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: displayText }
+      setMessages(prev => [...prev, assistantMsg])
+    } catch (err) {
+      const errorMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: err instanceof Error ? err.message : 'Something went wrong. Please try again.',
+      }
+      setMessages(prev => [...prev, errorMsg])
+    } finally {
+      setLoading(false)
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+      })
+    }
+  }, [input, datasourceId, datasource?.type, tableList, messages, definition, onApplyDefinition])
 
   if (!open) return null
 
@@ -216,7 +214,7 @@ export function ChatSidebar({ open, onClose, datasource, tables, definition, onA
               </div>
             </div>
           ))}
-          {isLoading && (
+          {loading && (
             <div className="flex justify-start">
               <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-500" />
@@ -232,13 +230,13 @@ export function ChatSidebar({ open, onClose, datasource, tables, definition, onA
         <div className="flex items-center gap-2">
           <Input
             placeholder={datasourceId ? 'Describe what to build...' : 'Choose a datasource first'}
-            disabled={!datasourceId || isLoading}
+            disabled={!datasourceId || loading}
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
-                handleSubmit()
+                void handleSubmit()
               }
             }}
             className="h-8 text-sm"
@@ -246,8 +244,8 @@ export function ChatSidebar({ open, onClose, datasource, tables, definition, onA
           <Button
             size="sm"
             className="h-8 w-8 shrink-0 rounded-md bg-violet-600 p-0 text-white hover:bg-violet-700"
-            onClick={handleSubmit}
-            disabled={!input.trim() || !datasourceId || isLoading}
+            onClick={() => void handleSubmit()}
+            disabled={!input.trim() || !datasourceId || loading}
           >
             <Send className="h-3.5 w-3.5" />
           </Button>
