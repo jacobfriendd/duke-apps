@@ -5,6 +5,7 @@ import devWorkspace from './src/plugins/dev-workspace.js'
 import { resolve } from 'node:path'
 
 export default defineConfig({
+  base: './',
   plugins: [
     tailwindcss(),
     devWorkspace(),

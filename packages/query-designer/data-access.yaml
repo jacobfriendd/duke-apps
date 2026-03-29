@@ -2,40 +2,17 @@
 # ========================
 # This file controls which Informer APIs your report can access.
 # Without this file, all API access is blocked (secure by default).
-#
-# Documentation: https://docs.entrinsik.com/informer/magic-reports/data-access
 
-# ============================================================================
-# DATASETS
-# ============================================================================
 datasets: []
-
-# ============================================================================
-# QUERIES
-# ============================================================================
 queries: []
-
-# ============================================================================
-# INTEGRATIONS
-# ============================================================================
 integrations: []
-
-# ============================================================================
-# DATASOURCES
-# ============================================================================
-# Uses wildcard — the app dynamically lists available datasources via the API.
-# No hardcoded datasource IDs so it works on any Informer tenant.
-datasources:
-  - "*"
-
-# ============================================================================
-# LIBRARIES
-# ============================================================================
 libraries: []
 
-# ============================================================================
-# RAW API ACCESS (Advanced)
-# ============================================================================
+# Datasources are accessed dynamically via the raw API routes below.
+# No specific datasource IDs needed — the app lists available datasources at runtime.
+datasources: []
+
+# Raw API access — wildcards allow any datasource to be queried.
 apis:
   - POST /api/models/go_everyday/_chat
   - POST /api/models/go_everyday/_completion

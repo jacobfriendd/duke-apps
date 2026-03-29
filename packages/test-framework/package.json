@@ -4,10 +4,9 @@
   "version": "1.0.0",
   "type": "module",
   "informer": {
-    "type": "app",
-    "id": "test-framework",
     "name": "Query Designer Test Framework",
-    "description": "User testing questionnaire for the Query Designer"
+    "description": "User testing questionnaire for the Query Designer",
+    "id": "c4e3cbee-dfa5-43b5-bf54-a09a388c6bfd"
   },
   "scripts": {
     "dev": "vite",

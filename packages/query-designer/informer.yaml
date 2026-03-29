@@ -1,6 +1,5 @@
 access:
-  datasources:
-    - "*"
+  datasources: []
   datasets: []
   queries: []
   integrations: []
