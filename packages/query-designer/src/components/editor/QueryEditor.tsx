@@ -71,6 +71,7 @@ import type {
   DatasourceTable,
   JoinType,
   QueryDefinition,
+  QueryJoin,
   QueryRecord,
   QueryReference,
   SortField,
@@ -306,6 +307,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
 
   const [joinDialogOpen, setJoinDialogOpen] = useState(false)
   const [joinForm, setJoinForm] = useState<JoinForm>(emptyJoinForm())
+  const [editingJoinId, setEditingJoinId] = useState<string | null>(null)
 
   const [sortDialogOpen, setSortDialogOpen] = useState(false)
   const [sortForm, setSortForm] = useState<SortForm>(emptySortForm())
@@ -947,7 +949,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
     const table = tables.find(item => item.restId === joinForm.tableId)
     if (!table) return
 
-    const joinId = generateId()
+    const joinId = editingJoinId ?? generateId()
     const conditions = joinForm.conditions
       .map(condition => {
         const left = columnOptionMap[condition.leftKey]
@@ -964,22 +966,40 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
 
     if (conditions.length === 0) return
 
-    dispatch({
-      type: 'ADD_JOIN',
-      target,
-      join: {
-        id: joinId,
-        table: table.mappingId,
-        tableId: table.restId,
-        tableLabel: table.name,
-        schema: table.schemaId,
-        alias: joinForm.alias.trim() || table.mappingId,
-        type: joinForm.type,
-        conditions,
-      },
-    })
+    const joinData = {
+      id: joinId,
+      table: table.mappingId,
+      tableId: table.restId,
+      tableLabel: table.name,
+      schema: table.schemaId,
+      alias: joinForm.alias.trim() || table.mappingId,
+      type: joinForm.type,
+      conditions,
+    }
+
+    if (editingJoinId) {
+      dispatch({ type: 'UPDATE_JOIN', target, join: joinData })
+    } else {
+      dispatch({ type: 'ADD_JOIN', target, join: joinData })
+    }
     setJoinDialogOpen(false)
     setJoinForm(emptyJoinForm())
+    setEditingJoinId(null)
+  }
+
+  function openJoinForEdit(join: QueryJoin) {
+    setEditingJoinId(join.id)
+    setJoinForm({
+      tableId: join.tableId || '',
+      type: join.type,
+      alias: join.alias,
+      conditions: join.conditions.map(c => ({
+        id: generateId(),
+        leftKey: availableColumnOptions.find(o => o.raw === c.left)?.key ?? '',
+        rightKey: c.right,
+      })),
+    })
+    setJoinDialogOpen(true)
   }
 
   function handleAddSort() {
@@ -1269,6 +1289,17 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                   <CommandButton icon={Sigma} label="Summarize" onClick={() => openFieldDialog('aggregate')} disabled={availableColumnOptions.length === 0} />
                   <CommandButton icon={Calculator} label="Formula" onClick={() => openFieldDialog('formula')} disabled={!selectedSourceTableId} />
                 </RibbonGroup>
+                {activeFields.length === 0 && selectedSourceTableId && (
+                  <RibbonGroup title="">
+                    <div className="flex max-w-sm items-start gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2">
+                      <HelpCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-500" />
+                      <div className="text-[11px] leading-snug text-sky-800">
+                        <p className="font-medium">Pick the data you want to see</p>
+                        <p className="mt-0.5 text-sky-700">Click "Columns" to choose which fields appear in your results. You can also add calculations with "Summarize" or custom formulas.</p>
+                      </div>
+                    </div>
+                  </RibbonGroup>
+                )}
                 {activeFields.length > 0 && (
                   <RibbonGroup title={`${activeFields.length} Field${activeFields.length !== 1 ? 's' : ''} Selected`}>
                     <div className="ribbon-item-list">
@@ -1392,6 +1423,17 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                     ))}
                   </div>
                 </RibbonGroup>
+                {activeCriteria.conditions.length === 0 && selectedSourceTableId && (
+                  <RibbonGroup title="">
+                    <div className="flex max-w-sm items-start gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2">
+                      <HelpCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-500" />
+                      <div className="text-[11px] leading-snug text-sky-800">
+                        <p className="font-medium">Narrow down your results</p>
+                        <p className="mt-0.5 text-sky-700">Click "Add condition" to filter rows. For example, show only orders where the total is greater than $100, or customers from a specific city.</p>
+                      </div>
+                    </div>
+                  </RibbonGroup>
+                )}
                 {activeCriteria.conditions.length > 0 && (
                   <RibbonGroup title={`${activeCriteria.conditions.length} Active Condition${activeCriteria.conditions.length !== 1 ? 's' : ''}`}>
                     <div className="ribbon-item-list">
@@ -1486,6 +1528,13 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                             <GitMerge className="h-3 w-3 shrink-0 text-slate-400" />
                             <span className="min-w-0 flex-1 truncate">{join.tableLabel || join.table}</span>
                             <span className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-medium text-slate-500">{typeLabels[join.type] || join.type}</span>
+                            <button
+                              className="shrink-0 rounded p-1 text-slate-400 transition-colors hover:bg-sky-50 hover:text-sky-600"
+                              onClick={() => openJoinForEdit(join)}
+                              title="Edit this join"
+                            >
+                              <PencilLine className="h-3.5 w-3.5" />
+                            </button>
                             <button
                               className="shrink-0 rounded p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-destructive"
                               onClick={() => dispatch({ type: 'REMOVE_JOIN', target, joinId: join.id })}
@@ -1946,10 +1995,10 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
           <DialogHeader className="border-b border-slate-200 px-6 py-5">
             <DialogTitle className="flex items-center gap-2 text-slate-900">
               <GitMerge className="h-5 w-5 text-sky-600" />
-              Connect to another table
+              {editingJoinId ? 'Edit table connection' : 'Connect to another table'}
             </DialogTitle>
             <DialogDescription>
-              Pull in data from a related table. For example, if you have orders, you can connect to customers to see who placed each order.
+              {editingJoinId ? 'Update the join settings for this table connection.' : 'Pull in data from a related table. For example, if you have orders, you can connect to customers to see who placed each order.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -2057,8 +2106,8 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
           </div>
 
           <DialogFooter className="border-t border-slate-200 px-6 py-4">
-            <Button variant="ghost" className="rounded-md" onClick={() => setJoinDialogOpen(false)}>Cancel</Button>
-            <Button className="rounded-md bg-sky-600 text-white hover:bg-sky-700" onClick={handleAddJoin} disabled={!joinForm.tableId}>Connect table</Button>
+            <Button variant="ghost" className="rounded-md" onClick={() => { setJoinDialogOpen(false); setEditingJoinId(null); setJoinForm(emptyJoinForm()) }}>Cancel</Button>
+            <Button className="rounded-md bg-sky-600 text-white hover:bg-sky-700" onClick={handleAddJoin} disabled={!joinForm.tableId || !joinForm.conditions.some(c => c.leftKey && c.rightKey)}>{editingJoinId ? 'Update join' : 'Connect table'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

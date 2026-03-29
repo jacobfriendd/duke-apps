@@ -1,0 +1,11 @@
+# Data Access Configuration — Test Framework
+# ============================================
+# This app only needs workspace DB access for storing survey responses.
+# No datasources, datasets, or external APIs required.
+
+datasources: []
+datasets: []
+queries: []
+integrations: []
+libraries: []
+apis: []

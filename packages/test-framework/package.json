@@ -12,7 +12,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "npm run build && informer-deploy",
+    "workspace:init": "informer-workspace init",
+    "workspace:migrate": "informer-workspace migrate",
+    "workspace:reset": "informer-workspace reset"
   },
   "dependencies": {
     "better-sqlite3": "^12.8.0",

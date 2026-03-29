@@ -18,17 +18,8 @@ function detectDialect(type: string): SqlDialect {
   return 'generic'
 }
 
-const FALLBACK_DATASOURCES: DatasourceInfo[] = [
-  {
-    id: 'admin:northwind',
-    naturalId: 'admin:northwind',
-    name: 'Northwind',
-    type: 'postgres',
-    family: 'sql',
-    dialect: 'postgresql',
-    schemas: ['public'],
-  },
-]
+// No hardcoded fallback — if the API is unreachable, show an empty list
+// so the app works on any Informer tenant regardless of datasource names.
 
 export interface SqlPreviewResult {
   rows: Record<string, unknown>[]
@@ -78,9 +69,9 @@ export async function listDatasources(): Promise<DatasourceInfo[]> {
       }
     }).filter(row => row.id)
 
-    return datasources.length > 0 ? datasources : FALLBACK_DATASOURCES
+    return datasources
   } catch {
-    return FALLBACK_DATASOURCES
+    return []
   }
 }
 
