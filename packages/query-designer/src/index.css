@@ -241,6 +241,43 @@ body {
   border-radius: 2px;
 }
 
+/* ─── Sub-select contextual ribbon ─── */
+
+.ribbon-container.ribbon-subselect {
+  background: #faf6f0;
+}
+
+.ribbon-container.ribbon-subselect .ribbon-panel {
+  background: linear-gradient(180deg, #fdf9f4 0%, #f5efe6 100%);
+  border-top-color: #d9cfc1;
+  border-bottom-color: #d9cfc1;
+}
+
+.ribbon-container.ribbon-subselect .ribbon-tab[data-state="active"] {
+  color: #92400e;
+  background: #fdf9f4;
+  border-color: #d9cfc1;
+}
+
+.ribbon-container.ribbon-subselect .ribbon-tab:hover {
+  color: #92400e;
+  background: rgba(146, 64, 14, 0.06);
+}
+
+.ribbon-container.ribbon-subselect .ribbon-group::after {
+  background: linear-gradient(180deg, transparent, #d1c4b0 20%, #d1c4b0 80%, transparent);
+}
+
+.ribbon-container.ribbon-subselect .ribbon-group-label {
+  border-top-color: #e0d5c5;
+}
+
+.ribbon-container.ribbon-subselect .ribbon-command-button:hover {
+  background: rgba(146, 64, 14, 0.08);
+  border-color: rgba(146, 64, 14, 0.2);
+  color: #92400e;
+}
+
 /* ─── Query Tabs bar ─── */
 
 .query-tabs::-webkit-scrollbar {

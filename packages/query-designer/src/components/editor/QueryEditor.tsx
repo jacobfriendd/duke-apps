@@ -85,7 +85,7 @@ interface Props {
 }
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
-type RibbonTab = 'home' | 'columns' | 'filters' | 'joins' | 'sort' | 'subselects'
+type RibbonTab = 'home' | 'columns' | 'filters' | 'joins' | 'sort'
 type FieldDialogMode = 'column' | 'aggregate' | 'formula'
 type StageId = 'main' | string
 
@@ -1119,7 +1119,65 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
           </div>
         </div>
 
-        <div className="ribbon-container">
+        {/* ── Pipeline bar ── */}
+        {(definition.subqueries.length > 0 || selectedSourceTableId) && (
+          <div className="flex items-center gap-1 border-t border-slate-200 bg-slate-50/80 px-3 py-1.5">
+            <span className="mr-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Pipeline</span>
+            <StageButton active={isMainStage} onClick={() => setActiveStageId('main')}>
+              <span className="flex items-center gap-1">
+                <span className={cn('flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold', isMainStage ? 'bg-white/30 text-white' : 'bg-sky-100 text-sky-700')}>1</span>
+                Get Data
+              </span>
+            </StageButton>
+            {definition.subqueries.map((subquery, index) => {
+              const stepNum = index + 2
+              const readableLabel = subquery.alias.replace(/^step_\d+_?/, '').replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase()) || `Step ${stepNum}`
+              return (
+                <span key={subquery.id} className="flex items-center gap-1">
+                  <span className="text-slate-300">→</span>
+                  <StageButton active={activeStageId === subquery.id} onClick={() => setActiveStageId(subquery.id)}>
+                    <span className="flex items-center gap-1">
+                      <span className={cn('flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold', activeStageId === subquery.id ? 'bg-white/30 text-white' : 'bg-amber-100 text-amber-700')}>{stepNum}</span>
+                      {readableLabel}
+                      <button
+                        className="ml-0.5 rounded-full p-0.5 opacity-50 transition-opacity hover:opacity-100"
+                        onClick={event => { event.stopPropagation(); handleRemoveSubquery(subquery.id) }}
+                        title="Remove this sub-select"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  </StageButton>
+                </span>
+              )
+            })}
+            <span className="text-slate-300">→</span>
+            <button
+              className="inline-flex h-7 items-center gap-1 rounded border border-dashed border-slate-300 bg-transparent px-2 text-[11px] font-medium text-slate-500 transition-colors hover:border-sky-300 hover:bg-sky-50/60 hover:text-sky-600"
+              onClick={() => setSubqueryDialogOpen(true)}
+              disabled={!selectedSourceTableId}
+            >
+              <Plus className="h-3 w-3" />
+              Add sub-select
+            </button>
+          </div>
+        )}
+
+        {/* ── Contextual ribbon banner when editing a sub-select ── */}
+        {!isMainStage && activeSubquery && (
+          <div className="flex items-center gap-2 border-t border-amber-200 bg-amber-50 px-4 py-1">
+            <Layers3 className="h-3.5 w-3.5 text-amber-600" />
+            <span className="text-[11px] font-medium text-amber-800">
+              Editing Sub-select: {activeSubquery.alias.replace(/_/g, ' ')}
+            </span>
+            <span className="text-[10px] text-amber-600">
+              — reads from {activeSubquery.source === 'main' ? 'Step 1 (Get Data)' : definition.subqueries.find(s => s.id === activeSubquery.source)?.alias.replace(/_/g, ' ') || 'previous step'}
+            </span>
+            <button className="ml-auto text-[10px] font-medium text-amber-700 underline" onClick={() => setActiveStageId('main')}>Back to main query</button>
+          </div>
+        )}
+
+        <div className={cn('ribbon-container', !isMainStage && 'ribbon-subselect')}>
           <Tabs value={ribbonTab} onValueChange={value => setRibbonTab(value as RibbonTab)}>
             <TabsList className="ribbon-tab-strip">
               <TabsTrigger value="home" className="ribbon-tab">Home</TabsTrigger>
@@ -1132,16 +1190,12 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                 {activeCriteria.conditions.length > 0 && <span className="ml-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-sky-500 px-1 text-[9px] font-bold text-white">{activeCriteria.conditions.length}</span>}
               </TabsTrigger>
               <TabsTrigger value="joins" className="ribbon-tab">
-                Joins
+                Related Data
                 {activeJoins.length > 0 && <span className="ml-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-sky-500 px-1 text-[9px] font-bold text-white">{activeJoins.length}</span>}
               </TabsTrigger>
               <TabsTrigger value="sort" className="ribbon-tab">
                 Sort &amp; Limit
                 {activeSortLimit.sorts.length > 0 && <span className="ml-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-sky-500 px-1 text-[9px] font-bold text-white">{activeSortLimit.sorts.length}</span>}
-              </TabsTrigger>
-              <TabsTrigger value="subselects" className="ribbon-tab">
-                Sub-selects
-                {definition.subqueries.length > 0 && <span className="ml-1 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-sky-500 px-1 text-[9px] font-bold text-white">{definition.subqueries.length}</span>}
               </TabsTrigger>
             </TabsList>
           </Tabs>
@@ -1237,10 +1291,60 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                     </div>
                   </RibbonGroup>
                 )}
-                {/* Aggregation warning: if there's an aggregate but too many non-aggregated columns */}
+                {/* Aggregation guidance */}
                 {(() => {
                   const aggregated = activeFields.filter(f => f.aggregate && f.aggregate !== 'none')
                   const nonAggregated = activeFields.filter(f => !f.aggregate || f.aggregate === 'none')
+
+                  // Case 1: Aggregate with NO group-by columns → single number, offer to add grouping
+                  if (aggregated.length > 0 && nonAggregated.length === 0) {
+                    // Find the column being aggregated to suggest grouping by it or other columns
+                    const aggColumn = aggregated[0].column
+                    const suggestedGroupColumns = sourceColumns
+                      .filter(c => c.name !== aggColumn && !activeFields.some(f => f.column === c.name))
+                      .slice(0, 5)
+
+                    return (
+                      <RibbonGroup title="">
+                        <div className="flex max-w-md flex-col gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2">
+                          <div className="flex items-start gap-2">
+                            <HelpCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-500" />
+                            <div className="text-[11px] leading-snug text-sky-800">
+                              <p className="font-medium">This gives you a single number.</p>
+                              <p className="mt-0.5 text-sky-700">
+                                Want to see the breakdown? Add a column to group by — for example, see the count <em>per city</em> or <em>per country</em>.
+                              </p>
+                            </div>
+                          </div>
+                          {suggestedGroupColumns.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1 pl-5">
+                              <span className="text-[10px] font-medium text-sky-600">Group by:</span>
+                              {suggestedGroupColumns.map(col => (
+                                <button
+                                  key={col.name}
+                                  className="rounded-full border border-sky-200 bg-white px-2 py-0.5 text-[10px] font-medium text-sky-700 transition-colors hover:bg-sky-100"
+                                  onClick={() => dispatch({
+                                    type: 'ADD_FIELD',
+                                    target,
+                                    field: {
+                                      column: col.name,
+                                      alias: uniqueLabel(col.label || col.name, activeFields.map(f => f.alias || f.column)),
+                                      aggregate: 'none',
+                                      reference: { relation: 'source', column: col.name },
+                                    },
+                                  })}
+                                >
+                                  {col.label || col.name}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </RibbonGroup>
+                    )
+                  }
+
+                  // Case 2: Aggregate with TOO MANY group-by columns → counts will be 1
                   if (aggregated.length > 0 && nonAggregated.length > 3) {
                     return (
                       <RibbonGroup title="">
@@ -1251,7 +1355,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                             <p className="mt-0.5 text-amber-700">
                               You have {nonAggregated.length} non-summarized columns, so each row is unique.
                               Remove columns you don't need, or{' '}
-                              <button className="font-medium underline" onClick={() => setRibbonTab('subselects')}>add a sub-select</button>
+                              <button className="font-medium underline" onClick={() => setSubqueryDialogOpen(true)}>add a sub-select</button>
                               {' '}to summarize in a separate step.
                             </p>
                           </div>
@@ -1259,6 +1363,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                       </RibbonGroup>
                     )
                   }
+
                   return null
                 })()}
               </>
@@ -1321,62 +1426,79 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
 
             {ribbonTab === 'joins' && (
               <>
-                <RibbonGroup title="Joins">
-                  <CommandButton icon={GitMerge} label="Manual join" onClick={() => setJoinDialogOpen(true)} disabled={!selectedSourceTableId} />
+                <RibbonGroup title="Connect Tables">
+                  <CommandButton icon={GitMerge} label="Add related data" onClick={() => setJoinDialogOpen(true)} disabled={!selectedSourceTableId} />
                 </RibbonGroup>
-                {activeJoins.length > 0 && (
-                  <RibbonGroup title={`${activeJoins.length} Active Join${activeJoins.length !== 1 ? 's' : ''}`}>
-                    <div className="ribbon-item-list">
-                      {activeJoins.map(join => (
-                        <div key={join.id} className="flex h-7 items-center gap-1.5 rounded border border-slate-200 bg-white px-2 text-[11px] text-slate-700">
-                          <GitMerge className="h-3 w-3 shrink-0 text-slate-400" />
-                          <span className="min-w-0 flex-1 truncate">{join.alias || join.tableLabel || join.table}</span>
-                          <span className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-medium uppercase text-slate-500">{join.type}</span>
-                          <button
-                            className="shrink-0 rounded p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-destructive"
-                            onClick={() => dispatch({ type: 'REMOVE_JOIN', target, joinId: join.id })}
-                            title="Remove join"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      ))}
+                {activeJoins.length === 0 && selectedSourceTableId && (
+                  <RibbonGroup title="">
+                    <div className="flex max-w-sm items-start gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2">
+                      <HelpCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-500" />
+                      <div className="text-[11px] leading-snug text-sky-800">
+                        <p className="font-medium">Need data from another table?</p>
+                        <p className="mt-0.5 text-sky-700">
+                          For example, if you're looking at orders but also want customer names, you can connect to the customers table. The system matches rows using a shared column (like Customer ID).
+                        </p>
+                      </div>
                     </div>
                   </RibbonGroup>
                 )}
-                <RibbonGroup title="Suggested">
-                  <div className="flex flex-wrap items-center gap-1">
-                    {suggestedRelations.length === 0 ? (
-                      <span className="text-xs text-slate-500">No suggested joins</span>
-                    ) : (
-                      suggestedRelations.slice(0, 4).map(relation => {
-                        const targetTable = tables.find(t => t.restId === relation.to[0])
-                        const targetName = targetTable?.name ?? targetTable?.label ?? relation.name
-                        const alreadyJoined = activeJoins.some(j => j.tableId === relation.to[0])
+                {suggestedRelations.length > 0 && (
+                  <RibbonGroup title="Related tables found">
+                    <div className="flex flex-col gap-1">
+                      <p className="mb-1 text-[10px] text-slate-500">These tables can be connected automatically:</p>
+                      <div className="flex flex-wrap items-center gap-1">
+                        {suggestedRelations.slice(0, 4).map(relation => {
+                          const targetTable = tables.find(t => t.restId === relation.to[0])
+                          const targetName = targetTable?.name ?? targetTable?.label ?? relation.name
+                          const alreadyJoined = activeJoins.some(j => j.tableId === relation.to[0])
+                          return (
+                            <Button
+                              key={relation.id}
+                              variant="outline"
+                              size="sm"
+                              className={cn(
+                                'h-8 gap-1.5 rounded border px-2.5 text-xs transition-all',
+                                alreadyJoined
+                                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                                  : 'border-transparent bg-transparent text-slate-600 hover:border-sky-200 hover:bg-sky-50/60'
+                              )}
+                              onClick={() => addSuggestedJoin(relation)}
+                              disabled={alreadyJoined}
+                              title={`Connect to ${targetName}`}
+                            >
+                              <GitMerge className="h-3 w-3" />
+                              + {targetName}
+                              {alreadyJoined && <Check className="h-3 w-3" />}
+                            </Button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </RibbonGroup>
+                )}
+                {activeJoins.length > 0 && (
+                  <RibbonGroup title={`${activeJoins.length} Connected Table${activeJoins.length !== 1 ? 's' : ''}`}>
+                    <div className="ribbon-item-list">
+                      {activeJoins.map(join => {
+                        const typeLabels: Record<string, string> = { inner: 'matching only', left: 'all + matching', right: 'matching + all', full: 'all rows' }
                         return (
-                          <Button
-                            key={relation.id}
-                            variant="outline"
-                            size="sm"
-                            className={cn(
-                              'h-8 gap-1.5 rounded border px-2.5 text-xs transition-all',
-                              alreadyJoined
-                                ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                                : 'border-transparent bg-transparent text-slate-600 hover:border-sky-200 hover:bg-sky-50/60'
-                            )}
-                            onClick={() => addSuggestedJoin(relation)}
-                            disabled={alreadyJoined}
-                            title={`LEFT JOIN ${targetName} via ${relation.name}`}
-                          >
-                            <GitMerge className="h-3 w-3" />
-                            {targetName}
-                            {alreadyJoined && <Check className="h-3 w-3" />}
-                          </Button>
+                          <div key={join.id} className="flex h-7 items-center gap-1.5 rounded border border-slate-200 bg-white px-2 text-[11px] text-slate-700">
+                            <GitMerge className="h-3 w-3 shrink-0 text-slate-400" />
+                            <span className="min-w-0 flex-1 truncate">{join.tableLabel || join.table}</span>
+                            <span className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-medium text-slate-500">{typeLabels[join.type] || join.type}</span>
+                            <button
+                              className="shrink-0 rounded p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-destructive"
+                              onClick={() => dispatch({ type: 'REMOVE_JOIN', target, joinId: join.id })}
+                              title="Disconnect this table"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         )
-                      })
-                    )}
-                  </div>
-                </RibbonGroup>
+                      })}
+                    </div>
+                  </RibbonGroup>
+                )}
               </>
             )}
 
@@ -1432,102 +1554,6 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
               </>
             )}
 
-            {ribbonTab === 'subselects' && (
-              <>
-                {/* Pipeline breadcrumb */}
-                <RibbonGroup title="Your query pipeline">
-                  <div className="flex items-center gap-1">
-                    <StageButton active={isMainStage} onClick={() => setActiveStageId('main')}>
-                      <span className="flex items-center gap-1">
-                        <span className="flex h-4 w-4 items-center justify-center rounded-full bg-sky-100 text-[9px] font-bold text-sky-700">1</span>
-                        Get Data
-                      </span>
-                    </StageButton>
-                    {definition.subqueries.map((subquery, index) => {
-                      const stepNum = index + 2
-                      const readableLabel = subquery.alias
-                        .replace(/^step_\d+_?/, '')
-                        .replace(/_/g, ' ')
-                        .replace(/^\w/, c => c.toUpperCase()) || `Step ${stepNum}`
-                      return (
-                        <span key={subquery.id} className="flex items-center gap-1">
-                          <span className="text-slate-300">→</span>
-                          <StageButton active={activeStageId === subquery.id} onClick={() => setActiveStageId(subquery.id)}>
-                            <span className="flex items-center gap-1">
-                              <span className={cn(
-                                'flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold',
-                                activeStageId === subquery.id ? 'bg-white/30 text-white' : 'bg-sky-100 text-sky-700'
-                              )}>{stepNum}</span>
-                              {readableLabel}
-                              <button
-                                className="ml-0.5 rounded-full p-0.5 opacity-50 transition-opacity hover:opacity-100"
-                                onClick={event => {
-                                  event.stopPropagation()
-                                  handleRemoveSubquery(subquery.id)
-                                }}
-                                title="Remove this sub-select"
-                              >
-                                <X className="h-3 w-3" />
-                              </button>
-                            </span>
-                          </StageButton>
-                        </span>
-                      )
-                    })}
-                    <span className="text-slate-300">→</span>
-                    <Button variant="outline" size="sm" className="h-8 rounded border-dashed border-sky-300 bg-transparent px-2.5 text-xs hover:bg-sky-50/60" onClick={() => setSubqueryDialogOpen(true)}>
-                      <Plus className="mr-1 h-3.5 w-3.5" />
-                      Add sub-select
-                    </Button>
-                  </div>
-                </RibbonGroup>
-
-                {/* Contextual info for selected step */}
-                {definition.subqueries.length === 0 && (
-                  <RibbonGroup title="What are sub-selects?">
-                    <div className="flex max-w-md flex-col gap-1.5 text-xs text-slate-600">
-                      <p>Sub-selects let you <strong>refine your results in steps</strong>. Your main query gets the raw data, then each sub-select can further summarize, filter, or reshape it.</p>
-                      <p className="text-slate-500">Example: Get all orders → Count orders per customer → Show only customers with 5+ orders</p>
-                    </div>
-                  </RibbonGroup>
-                )}
-
-                {activeSubquery && (
-                  <RibbonGroup title="This sub-select">
-                    <div className="flex items-end gap-2">
-                      <div className="grid gap-1">
-                        <Label className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Name</Label>
-                        <Input
-                          value={activeSubquery.alias}
-                          onChange={event => dispatch({ type: 'SET_SUBQUERY_ALIAS', subqueryId: activeSubquery.id, alias: event.target.value })}
-                          className="h-8 w-44 rounded border-slate-300 bg-white text-xs"
-                        />
-                      </div>
-                      <div className="grid gap-1">
-                        <Label className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Reads from</Label>
-                        <Select
-                          value={activeSubquery.source}
-                          onValueChange={value => dispatch({ type: 'SET_SUBQUERY_SOURCE', subqueryId: activeSubquery.id, source: value })}
-                        >
-                          <SelectTrigger className="h-8 w-40 rounded border-slate-300 bg-white text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="main">Step 1 — Get Data</SelectItem>
-                            {definition.subqueries.filter(item => item.id !== activeSubquery.id).map((item, idx) => (
-                              <SelectItem key={item.id} value={item.id}>Step {idx + 2} — {item.alias.replace(/_/g, ' ')}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <p className="pb-1 text-[10px] leading-tight text-slate-400">
-                        Use the Columns, Filters, and Sort tabs to configure what this sub-select does.
-                      </p>
-                    </div>
-                  </RibbonGroup>
-                )}
-              </>
-            )}
           </div>
         </div>
       </div>
@@ -1644,6 +1670,28 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
 
           <div className="flex-1 overflow-hidden p-2">
             <div className="h-full overflow-hidden rounded-lg border border-slate-200 bg-white/90 shadow-[0_18px_60px_-28px_rgba(15,23,42,0.3)]">
+              {/* Results step attribution */}
+              {definition.subqueries.length > 0 && (
+                <div className={cn(
+                  'flex items-center gap-2 border-b px-3 py-1.5 text-[11px]',
+                  isMainStage ? 'border-slate-200 bg-slate-50' : 'border-amber-200 bg-amber-50'
+                )}>
+                  <span className={cn(
+                    'flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold',
+                    isMainStage ? 'bg-sky-100 text-sky-700' : 'bg-amber-100 text-amber-700'
+                  )}>
+                    {isMainStage ? '1' : definition.subqueries.findIndex(s => s.id === activeStageId) + 2}
+                  </span>
+                  <span className={isMainStage ? 'font-medium text-slate-600' : 'font-medium text-amber-800'}>
+                    Showing results for: {isMainStage ? 'Get Data (main query)' : activeSubquery?.alias.replace(/_/g, ' ') || 'sub-select'}
+                  </span>
+                  {!isMainStage && (
+                    <span className="text-amber-600">
+                      — this is the final output of your pipeline
+                    </span>
+                  )}
+                </div>
+              )}
               <TabbedResults
                 rows={previewRows}
                 loading={previewLoading}
@@ -1898,21 +1946,23 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
           <DialogHeader className="border-b border-slate-200 px-6 py-5">
             <DialogTitle className="flex items-center gap-2 text-slate-900">
               <GitMerge className="h-5 w-5 text-sky-600" />
-              Add join
+              Connect to another table
             </DialogTitle>
-            <DialogDescription>Pick another table and tell the ribbon how rows should line up.</DialogDescription>
+            <DialogDescription>
+              Pull in data from a related table. For example, if you have orders, you can connect to customers to see who placed each order.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-5 px-6 py-6">
             <div className="grid gap-4 md:grid-cols-3">
               <div className="grid gap-2 md:col-span-2">
-                <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Join table</Label>
+                <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Which table has the data you need?</Label>
                 <Select value={joinForm.tableId || undefined} onValueChange={value => {
                   const table = tables.find(item => item.restId === value)
                   setJoinForm(current => ({ ...current, tableId: value, alias: current.alias || table?.mappingId || '' }))
                 }}>
                   <SelectTrigger className="h-10 rounded-md border-slate-200 bg-white">
-                    <SelectValue placeholder="Choose a table to join" />
+                    <SelectValue placeholder="Pick a table..." />
                   </SelectTrigger>
                   <SelectContent className="max-h-60">
                     {tables.filter(item => item.restId !== selectedSourceTableId).map(table => (
@@ -1923,72 +1973,78 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
               </div>
 
               <div className="grid gap-2">
-                <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Join type</Label>
+                <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">What if a row doesn't match?</Label>
                 <Select value={joinForm.type} onValueChange={value => setJoinForm(current => ({ ...current, type: value as JoinType }))}>
                   <SelectTrigger className="h-10 rounded-md border-slate-200 bg-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="inner">Inner join</SelectItem>
-                    <SelectItem value="left">Left join</SelectItem>
-                    <SelectItem value="right">Right join</SelectItem>
-                    <SelectItem value="full">Full join</SelectItem>
+                    <SelectItem value="left">Keep all my rows, even without a match</SelectItem>
+                    <SelectItem value="inner">Only show rows that match in both</SelectItem>
+                    <SelectItem value="right">Keep all rows from the other table</SelectItem>
+                    <SelectItem value="full">Keep everything from both tables</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
-            <div className="grid gap-2 md:w-64">
-              <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Join nickname</Label>
-              <Input value={joinForm.alias} onChange={event => setJoinForm(current => ({ ...current, alias: event.target.value }))} className="h-10 rounded-md border-slate-200 bg-white" placeholder="Short name for joined fields" />
+            <div className="grid gap-2 md:w-72">
+              <Label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Short name for this connection</Label>
+              <Input value={joinForm.alias} onChange={event => setJoinForm(current => ({ ...current, alias: event.target.value }))} className="h-10 rounded-md border-slate-200 bg-white" placeholder="e.g. customer_info" />
             </div>
 
             <div className="grid gap-3 rounded-md border border-slate-200 bg-white p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-slate-800">Match rules</p>
-                  <p className="mt-1 text-xs text-slate-500">Each rule says which field on the current stage matches a field on the joined table.</p>
+                  <p className="text-sm font-semibold text-slate-800">How should the rows be matched?</p>
+                  <p className="mt-1 text-xs text-slate-500">Pick the column that both tables share. For example, "CustomerID" in your data = "CustomerID" in the other table.</p>
                 </div>
                 <Button variant="outline" size="sm" className="rounded-md border-slate-200 bg-white" onClick={() => setJoinForm(current => ({ ...current, conditions: [...current.conditions, { id: generateId(), leftKey: '', rightKey: '' }] }))}>
                   <Plus className="mr-1 h-3.5 w-3.5" />
-                  Add rule
+                  Add match
                 </Button>
               </div>
 
               {joinForm.conditions.map(condition => (
                 <div key={condition.id} className="grid gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 md:grid-cols-[1fr_auto_1fr_auto] md:items-center">
-                  <Select value={condition.leftKey || undefined} onValueChange={value => setJoinForm(current => ({
-                    ...current,
-                    conditions: current.conditions.map(item => item.id === condition.id ? { ...item, leftKey: value } : item),
-                  }))}>
-                    <SelectTrigger className="h-10 rounded-md border-slate-200 bg-white">
-                      <SelectValue placeholder="Current stage field" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableColumnOptions.map(option => (
-                        <SelectItem key={option.key} value={option.key}>{option.label} - {option.caption}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="grid gap-1">
+                    <span className="text-[10px] font-medium text-slate-500">Column in your data</span>
+                    <Select value={condition.leftKey || undefined} onValueChange={value => setJoinForm(current => ({
+                      ...current,
+                      conditions: current.conditions.map(item => item.id === condition.id ? { ...item, leftKey: value } : item),
+                    }))}>
+                      <SelectTrigger className="h-10 rounded-md border-slate-200 bg-white">
+                        <SelectValue placeholder="Pick a column..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableColumnOptions.map(option => (
+                          <SelectItem key={option.key} value={option.key}>{option.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                  <div className="px-2 text-center text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">=</div>
+                  <div className="px-2 pt-4 text-center text-xs font-semibold text-slate-400">matches</div>
 
-                  <Select value={condition.rightKey || undefined} onValueChange={value => setJoinForm(current => ({
-                    ...current,
-                    conditions: current.conditions.map(item => item.id === condition.id ? { ...item, rightKey: value } : item),
-                  }))}>
-                    <SelectTrigger className="h-10 rounded-md border-slate-200 bg-white">
-                      <SelectValue placeholder={joinTable ? `${joinTable.name} field` : 'Joined table field'} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {joinTableColumns.map(column => (
-                        <SelectItem key={column.id} value={column.name}>{column.label} - {column.dataType}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="grid gap-1">
+                    <span className="text-[10px] font-medium text-slate-500">Column in {joinTable ? joinTable.name : 'the other table'}</span>
+                    <Select value={condition.rightKey || undefined} onValueChange={value => setJoinForm(current => ({
+                      ...current,
+                      conditions: current.conditions.map(item => item.id === condition.id ? { ...item, rightKey: value } : item),
+                    }))}>
+                      <SelectTrigger className="h-10 rounded-md border-slate-200 bg-white">
+                        <SelectValue placeholder="Pick a column..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {joinTableColumns.map(column => (
+                          <SelectItem key={column.id} value={column.name}>{column.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
                   {joinForm.conditions.length > 1 ? (
-                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-md text-slate-500 hover:text-destructive" onClick={() => setJoinForm(current => ({
+                    <Button variant="ghost" size="icon" className="mt-4 h-9 w-9 rounded-md text-slate-500 hover:text-destructive" onClick={() => setJoinForm(current => ({
                       ...current,
                       conditions: current.conditions.filter(item => item.id !== condition.id),
                     }))}>
@@ -2002,7 +2058,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
 
           <DialogFooter className="border-t border-slate-200 px-6 py-4">
             <Button variant="ghost" className="rounded-md" onClick={() => setJoinDialogOpen(false)}>Cancel</Button>
-            <Button className="rounded-md bg-sky-600 text-white hover:bg-sky-700" onClick={handleAddJoin} disabled={!joinForm.tableId}>Add join</Button>
+            <Button className="rounded-md bg-sky-600 text-white hover:bg-sky-700" onClick={handleAddJoin} disabled={!joinForm.tableId}>Connect table</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
