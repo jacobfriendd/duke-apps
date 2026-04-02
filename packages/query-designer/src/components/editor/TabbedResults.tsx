@@ -106,7 +106,7 @@ export function TabbedResults({ rows, loading, error, emptyState, datasourceId, 
   const activeTableTab = tableTabs.find(t => t.id === activeTab)
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* Tab content */}
       <div className="flex-1 overflow-hidden">
         {activeTab === 'results' ? (

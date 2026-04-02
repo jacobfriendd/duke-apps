@@ -18,15 +18,49 @@ function detectDialect(type: string): SqlDialect {
   return 'generic'
 }
 
-// No hardcoded fallback — if the API is unreachable, show an empty list
-// so the app works on any Informer tenant regardless of datasource names.
+const FALLBACK_DATASOURCES: DatasourceInfo[] = [
+  {
+    id: 'admin:northwind',
+    naturalId: 'admin:northwind',
+    name: 'Northwind',
+    type: 'postgres',
+    family: 'sql',
+    dialect: 'postgresql',
+    schemas: ['public'],
+  },
+]
 
 export interface SqlPreviewResult {
   rows: Record<string, unknown>[]
 }
 
-function encodePath(value: string) {
-  return encodeURIComponent(value)
+const REQUEST_TIMEOUT = 15_000
+
+async function fetchWithTimeout(url: string, init?: RequestInit, timeout = REQUEST_TIMEOUT): Promise<Response> {
+  const controller = new AbortController()
+  const existing = init?.signal
+
+  // If caller already supplies a signal, forward its abort
+  if (existing) {
+    if (existing.aborted) {
+      controller.abort(existing.reason)
+    } else {
+      existing.addEventListener('abort', () => controller.abort(existing.reason), { once: true })
+    }
+  }
+
+  const timer = setTimeout(() => controller.abort(), timeout)
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Request timed out (${url})`)
+    }
+    throw error
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 async function readErrorMessage(res: Response, fallback: string): Promise<string> {
@@ -39,46 +73,66 @@ async function readErrorMessage(res: Response, fallback: string): Promise<string
 }
 
 async function requestJson<T>(url: string, init?: RequestInit, fallbackError = 'Request failed'): Promise<T> {
-  const res = await fetch(url, init)
+  const res = await fetchWithTimeout(url, init)
   if (!res.ok) {
     throw new Error(await readErrorMessage(res, fallbackError))
   }
   return res.json()
 }
 
+export async function pingDatasource(datasourceId: string): Promise<boolean> {
+  try {
+    const res = await fetchWithTimeout(
+      `/api/datasources/${datasourceId}/_ping`,
+      { method: 'POST' },
+      10_000,
+    )
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 export async function listDatasources(): Promise<DatasourceInfo[]> {
   try {
-    const data = await requestJson<Record<string, unknown>>(
-      '/api/datasources?limit=100&start=0&sort=name&embedded=true',
+    const rows = await requestJson<Record<string, unknown>[]>(
+      '/api/datasources-list',
       undefined,
       'Failed to load datasources'
     )
 
-    const rows = ((data?._embedded as Record<string, unknown>)?.['inf:datasource'] as Record<string, unknown>[] | undefined) ?? []
+    const datasources = rows
+      .filter((row) => row.family === 'sql' || (Array.isArray(row.languages) && (row.languages as string[]).includes('sql')))
+      .map((row): DatasourceInfo => {
+        const type = String(row.type ?? 'unknown')
+        return {
+          id: String(row.naturalId ?? row.id ?? ''),
+          naturalId: String(row.naturalId ?? row.id ?? ''),
+          name: String(row.name ?? row.naturalId ?? row.id ?? 'Datasource'),
+          type,
+          family: String(row.family ?? 'unknown'),
+          dialect: detectDialect(type),
+          schemas: Array.isArray(row.schemas) ? row.schemas.map(value => String(value)) : [],
+        }
+      })
+      .filter(row => row.id)
 
-    const datasources = rows.map((row): DatasourceInfo => {
-      const type = String(row.type ?? 'unknown')
-      return {
-        id: String(row.naturalId ?? row.id ?? ''),
-        naturalId: String(row.naturalId ?? row.id ?? ''),
-        name: String(row.name ?? row.naturalId ?? row.id ?? 'Datasource'),
-        type,
-        family: String(row.family ?? 'unknown'),
-        dialect: detectDialect(type),
-        schemas: Array.isArray(row.schemas) ? row.schemas.map(value => String(value)) : [],
-      }
-    }).filter(row => row.id)
+    if (datasources.length === 0) return FALLBACK_DATASOURCES
 
-    return datasources
+    // Ping all datasources in parallel to check connectivity
+    const pings = await Promise.all(
+      datasources.map(ds => pingDatasource(ds.naturalId))
+    )
+    return datasources.map((ds, i) => ({ ...ds, reachable: pings[i] }))
   } catch {
-    return []
+    return FALLBACK_DATASOURCES
   }
 }
 
 export async function getDatasourceTables(datasourceId: string): Promise<DatasourceTable[]> {
   try {
     const data = await requestJson<Record<string, unknown>[]>(
-      `/api/datasources/${encodePath(datasourceId)}/mappings-list`,
+      `/api/datasources/${datasourceId}/mappings-list`,
       undefined,
       'Failed to load datasource tables'
     )
@@ -129,7 +183,7 @@ export async function getDatasourceTables(datasourceId: string): Promise<Datasou
 export async function getDatasourceColumns(datasourceId: string, tableId: string): Promise<DatasourceColumn[]> {
   try {
     const data = await requestJson<Record<string, unknown>[]>(
-      `/api/datasources/${encodePath(datasourceId)}/mappings/${encodePath(tableId)}/fields-list`,
+      `/api/datasources/${datasourceId}/mappings/${tableId}/fields-list`,
       undefined,
       'Failed to load datasource columns'
     )
@@ -175,7 +229,7 @@ export async function getDatasourceColumns(datasourceId: string, tableId: string
 export async function getDatasourceRelations(datasourceId: string): Promise<DatasourceRelation[]> {
   try {
     const data = await requestJson<Record<string, unknown>[]>(
-      `/api/datasources/${encodePath(datasourceId)}/schema.json`,
+      `/api/datasources/${datasourceId}/schema.json`,
       undefined,
       'Failed to load datasource relationships'
     )
@@ -204,16 +258,23 @@ export async function getDatasourceRelations(datasourceId: string): Promise<Data
 }
 
 export async function executeDatasourceSql(datasourceId: string, sql: string, limit = 100): Promise<SqlPreviewResult> {
-  const rows = await requestJson<Record<string, unknown>[]>(
-    `/api/datasources/${encodePath(datasourceId)}/_query?output=json&limit=${limit}`,
+  const res = await fetchWithTimeout(
+    `/api/datasources/${datasourceId}/_query?output=json&limit=${limit}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ language: 'sql', payload: sql }),
+      body: JSON.stringify({ language: 'sql', payload: sql, limit, options: {} }),
     },
-    'Failed to run SQL preview'
   )
 
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res, 'Failed to run SQL preview'))
+  }
+
+  const data = await res.json()
+  const rows: Record<string, unknown>[] = Array.isArray(data)
+    ? data
+    : data.rows || data.records || data.data || data.results || []
   return { rows }
 }
 

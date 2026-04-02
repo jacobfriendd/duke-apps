@@ -410,7 +410,10 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
     let cancelled = false
     setTablesLoading(true)
 
-    Promise.all([getDatasourceTables(definition.datasource), getDatasourceRelations(definition.datasource)])
+    Promise.all([
+      getDatasourceTables(definition.datasource).catch(() => [] as DatasourceTable[]),
+      getDatasourceRelations(definition.datasource).catch(() => [] as DatasourceRelation[]),
+    ])
       .then(([tableRows, relationRows]) => {
         if (cancelled) return
         setTables(tableRows)
@@ -1718,7 +1721,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
           </div>
 
           <div className="flex-1 overflow-hidden p-2">
-            <div className="h-full overflow-hidden rounded-lg border border-slate-200 bg-white/90 shadow-[0_18px_60px_-28px_rgba(15,23,42,0.3)]">
+            <div className="flex h-full flex-col overflow-hidden rounded-lg border border-slate-200 bg-white/90 shadow-[0_18px_60px_-28px_rgba(15,23,42,0.3)]">
               {/* Results step attribution */}
               {definition.subqueries.length > 0 && (
                 <div className={cn(
@@ -1776,7 +1779,14 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                 </SelectTrigger>
                 <SelectContent>
                   {datasources.map(item => (
-                    <SelectItem key={item.id} value={item.naturalId}>{item.name}</SelectItem>
+                    <SelectItem key={item.id} value={item.naturalId} disabled={item.reachable === false}>
+                      <span className="flex items-center gap-2">
+                        {item.name}
+                        {item.reachable === false && (
+                          <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-600">offline</span>
+                        )}
+                      </span>
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>

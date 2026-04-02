@@ -10,6 +10,7 @@ export interface DatasourceInfo {
   family: string
   dialect: SqlDialect
   schemas: string[]
+  reachable?: boolean
 }
 
 export interface DatasourceTable {

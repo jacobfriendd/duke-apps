@@ -17,9 +17,10 @@ apis:
   - POST /api/models/go_everyday/_chat
   - POST /api/models/go_everyday/_completion
   - POST /api/models/go_everyday/_object
-  - GET /api/datasources
+  - GET /api/datasources-list
   - GET /api/datasources/*/mappings-list
   - GET /api/datasources/*/mappings/*/fields-list
   - GET /api/datasources/*/schema.json
+  - POST /api/datasources/*/_ping
   - POST /api/datasources/*/_query
   - POST /api/datasources/*/_search-metadata
