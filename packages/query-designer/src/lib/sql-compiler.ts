@@ -41,6 +41,12 @@ function quoteIdentifier(value: string, dialect: SqlDialect = 'postgresql') {
   return `"${value.replace(/"/g, '""')}"`
 }
 
+/** Oracle does not support AS for table/view aliases (only for column aliases). */
+function tableAlias(alias: string, dialect: SqlDialect) {
+  const quoted = quoteIdentifier(alias, dialect)
+  return dialect === 'oracle' ? quoted : `AS ${quoted}`
+}
+
 function escapeLiteral(value: string) {
   return `'${value.replace(/'/g, "''")}'`
 }
@@ -275,7 +281,7 @@ function compileJoin(join: QueryJoin, aliases: AliasMap, errors: string[], diale
   }
 
   const keyword = `${join.type.toUpperCase()} JOIN`
-  return `${keyword} ${quoteIdentifier(join.schema, dialect)}.${quoteIdentifier(join.table, dialect)} AS ${quoteIdentifier(joinAlias, dialect)} ON ${conditions.join(' AND ')}`
+  return `${keyword} ${quoteIdentifier(join.schema, dialect)}.${quoteIdentifier(join.table, dialect)} ${tableAlias(joinAlias, dialect)} ON ${conditions.join(' AND ')}`
 }
 
 function compileSort(sortLimit: SortLimit, aliases: AliasMap, dialect: SqlDialect = 'postgresql') {
@@ -389,8 +395,8 @@ export function compileQuerySql(definition: QueryDefinition, activeStageId: Stag
     cteNames.set(stageId, nextCteName)
 
     const fromClause = stageId === 'main'
-      ? `FROM ${quoteIdentifier(definition.schema, dialect)}.${quoteIdentifier(definition.table, dialect)} AS ${quoteIdentifier('src', dialect)}`
-      : `FROM ${quoteIdentifier(ensureStage(stage.source || 'main'), dialect)} AS ${quoteIdentifier('src', dialect)}`
+      ? `FROM ${quoteIdentifier(definition.schema, dialect)}.${quoteIdentifier(definition.table, dialect)} ${tableAlias('src', dialect)}`
+      : `FROM ${quoteIdentifier(ensureStage(stage.source || 'main'), dialect)} ${tableAlias('src', dialect)}`
 
     cteBodies.set(stageId, buildStageSql(stage, fromClause, context))
     stack.delete(stageId)
@@ -416,8 +422,8 @@ export function compileQuerySql(definition: QueryDefinition, activeStageId: Stag
   dependencyOrder.forEach(ensureStage)
 
   const finalFrom = activeStageId === 'main'
-    ? `FROM ${quoteIdentifier(definition.schema, dialect)}.${quoteIdentifier(definition.table, dialect)} AS ${quoteIdentifier('src', dialect)}`
-    : `FROM ${quoteIdentifier(ensureStage(activeStage.source || 'main'), dialect)} AS ${quoteIdentifier('src', dialect)}`
+    ? `FROM ${quoteIdentifier(definition.schema, dialect)}.${quoteIdentifier(definition.table, dialect)} ${tableAlias('src', dialect)}`
+    : `FROM ${quoteIdentifier(ensureStage(activeStage.source || 'main'), dialect)} ${tableAlias('src', dialect)}`
 
   const finalSql = buildStageSql(activeStage, finalFrom, context)
 

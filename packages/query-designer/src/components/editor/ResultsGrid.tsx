@@ -16,6 +16,24 @@ function formatCell(value: unknown) {
   return String(value)
 }
 
+/** Extract a human-readable message from a raw Java/JDBC stack trace. */
+function friendlyError(raw: string): string {
+  // Try to pull the ORA- or SQL error message line
+  const oraMatch = raw.match(/ORA-\d+:\s*(.+)/)
+  if (oraMatch) return `ORA error: ${oraMatch[0].trim()}`
+
+  // Generic JDBC: pull the first meaningful line before "at ..."
+  const msgMatch = raw.match(/^(?:Error[^:]*:\s*)?(.+?)(?:\s+at\s+|$)/m)
+  if (msgMatch) {
+    const msg = msgMatch[1].trim()
+    if (msg.length > 10) return msg
+  }
+
+  // Fallback: return first line only, capped
+  const firstLine = raw.split('\n')[0].trim()
+  return firstLine.length > 200 ? `${firstLine.slice(0, 200)}…` : firstLine
+}
+
 export function ResultsGrid({ rows, loading, error, emptyState }: Props) {
   const columns = Array.from(new Set(rows.flatMap(row => Object.keys(row))))
 
@@ -35,7 +53,7 @@ export function ResultsGrid({ rows, loading, error, emptyState }: Props) {
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             <p className="font-medium">Preview could not run</p>
-            <p className="mt-1 text-destructive/80">{error}</p>
+            <p className="mt-1 text-destructive/80">{friendlyError(error)}</p>
           </div>
         </div>
       </div>
