@@ -602,8 +602,10 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
   const dialect: SqlDialect = currentDatasource?.dialect ?? 'postgresql'
 
   const compiled = useMemo(
-    () => compileQuerySql(definition, activeStageId, dialect),
-    [activeStageId, definition, dialect]
+    () => currentDatasource
+      ? compileQuerySql(definition, activeStageId, dialect)
+      : { sql: '', errors: [] },
+    [activeStageId, currentDatasource, definition, dialect]
   )
 
   // Sync SQL draft from compiler when not manually editing

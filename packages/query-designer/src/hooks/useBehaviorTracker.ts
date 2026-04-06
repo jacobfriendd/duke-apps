@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { BehaviorTracker } from '@/lib/behavior-tracker'
 import type { BehavioralData } from '@/lib/behavior-tracker'
 
@@ -135,7 +135,7 @@ export function useBehaviorTracker() {
     return tracker.export()
   }, [tracker])
 
-  return {
+  return useMemo(() => ({
     trackAction,
     trackDialogOpen,
     trackDialogClose,
@@ -145,7 +145,7 @@ export function useBehaviorTracker() {
     trackTaskComplete,
     setQueryInfo,
     exportData,
-  }
+  }), [trackAction, trackDialogOpen, trackDialogClose, trackTabSwitch, trackError, trackTaskStart, trackTaskComplete, setQueryInfo, exportData])
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

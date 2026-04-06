@@ -1,12 +1,12 @@
 import type { SurveySection } from '@/types'
 
 export const surveySections: SurveySection[] = [
-  // ── Section 1: Welcome / Info ──
+  // ── Section 1: Welcome ──
   {
     id: 'welcome',
     title: 'Welcome',
     description:
-      'Thank you for participating in the Query Designer usability test. Please tell us a bit about yourself before we begin. This survey should take approximately 20\u201330 minutes.',
+      'Thanks for testing the Query Designer! A few quick questions about you, then we\'ll jump in. Should take about 10 minutes.',
     questions: [
       {
         id: 'name',
@@ -39,294 +39,129 @@ export const surveySections: SurveySection[] = [
     ],
   },
 
-  // ── Section 2: Standard Query Task ──
+  // ── Section 2: Build a Query ──
   {
-    id: 'standard-query',
-    title: 'Standard Query',
+    id: 'build-query',
+    title: 'Build a Query',
     description:
-      'In this task you will build a basic query using the visual Query Designer interface. Follow the steps below, then answer the questions.',
+      'Build a query, apply filters, sort the results, and save your work.',
     questions: [
       {
-        id: 'standard-query-instructions',
+        id: 'build-query-instructions',
         type: 'instructions',
         label: 'Steps to complete',
         steps: [
           'Open the Query Designer and choose the Northwind datasource.',
-          'Select the "public.orders" table from the table list.',
-          'Go to the Columns tab and add these columns: order_id, customer_id, order_date, freight.',
-          'Go to the Filters tab and add a filter: freight greater than 50.',
-          'Click the Preview button on the Home tab to run the query and inspect the results.',
+          'Select the "public.orders" table, then add columns: order_id, customer_id, order_date, freight.',
+          'Add a filter: freight greater than 50. Try adding a second filter and switching between AND/OR.',
+          'Sort by order_date descending and set a row limit of 50.',
+          'Preview the results, then save with Ctrl+S (or Cmd+S).',
+          'Copy or export the SQL, then reopen the saved query to confirm everything persisted.',
         ],
       },
       {
-        id: 'standard-query-ease',
+        id: 'build-query-ease',
         type: 'rating',
-        label: 'How easy was it to build this query?',
+        label: 'How easy was the overall query-building experience?',
         description: '1 = Very Difficult, 5 = Very Easy',
         required: true,
       },
       {
-        id: 'standard-query-clarity',
+        id: 'build-query-navigation',
         type: 'rating',
-        label: 'How clear were the column / field labels?',
-        description: '1 = Very Unclear, 5 = Very Clear',
+        label: 'How easy was it to find the features you needed (columns, filters, sort, save)?',
+        description: '1 = Very Difficult, 5 = Found everything immediately',
         required: true,
       },
       {
-        id: 'standard-query-find-buttons',
-        type: 'rating',
-        label: 'How easy was it to find the buttons you needed (Choose source, Columns, Filters, Preview)?',
-        description: '1 = Very Difficult to find, 5 = Found everything immediately',
-        required: true,
-      },
-      {
-        id: 'standard-query-confusion',
+        id: 'build-query-feedback',
         type: 'textarea',
-        label: 'What was confusing, if anything?',
-        placeholder: 'Describe anything that was unclear or difficult\u2026',
+        label: 'What was confusing or could be improved?',
+        placeholder: 'Anything that slowed you down or felt unclear\u2026',
       },
     ],
   },
 
-  // ── Section 3: Natural Language Query Task ──
+  // ── Section 3: Natural Language Query ──
   {
     id: 'nl-query',
     title: 'Natural Language Query',
     description:
-      'Try the AI-powered natural language feature to generate a query from a plain English description.',
+      'Try the AI-powered natural language feature.',
     questions: [
       {
         id: 'nl-query-instructions',
         type: 'instructions',
         label: 'Steps to complete',
         steps: [
-          'Make sure you have a datasource selected (use Northwind if you haven\'t already).',
-          'Enable the Beta AI toggle in the top toolbar.',
-          'In the natural language bar that appears, type: "Show me all orders shipped to France with freight over 30, sorted by order date"',
-          'Review the generated SQL and the visual query that appears.',
-          'Try a second query of your own choosing.',
+          'With Northwind selected, enable the Beta AI toggle in the toolbar.',
+          'In the natural language bar, type: "Show me all orders shipped to France with freight over 30, sorted by order date"',
+          'Review the generated query, then try one of your own.',
         ],
-      },
-      {
-        id: 'nl-query-understanding',
-        type: 'rating',
-        label: 'How well did the AI understand your request?',
-        description: '1 = Did Not Understand, 5 = Understood Perfectly',
-        required: true,
       },
       {
         id: 'nl-query-usefulness',
         type: 'rating',
-        label: 'How useful is the natural language feature compared to building the query manually?',
+        label: 'How useful is this feature compared to building the query manually?',
         description: '1 = Not Useful, 5 = Extremely Useful',
         required: true,
       },
       {
-        id: 'nl-query-suggestions',
+        id: 'nl-query-feedback',
         type: 'textarea',
         label: 'Any suggestions for the AI feature?',
-        placeholder: 'Ideas for improving the natural language experience\u2026',
+        placeholder: 'Ideas, issues, or things it got wrong\u2026',
       },
     ],
   },
 
-  // ── Section 4: Sub-select Task ──
+  // ── Section 4: Joins & Sub-selects ──
   {
-    id: 'sub-select',
-    title: 'Sub-selects',
+    id: 'joins-subselects',
+    title: 'Joins & Sub-selects',
     description:
-      'Create a sub-select (nested query) that builds on a main query to test the multi-stage query building experience.',
+      'Connect tables with joins and create a sub-select stage.',
     questions: [
       {
-        id: 'sub-select-instructions',
+        id: 'joins-subselects-instructions',
         type: 'instructions',
         label: 'Steps to complete',
         steps: [
-          'Start with a main query on the Northwind "public.orders" table with columns: customer_id, freight.',
-          'Go to the Sub-selects tab and click "New" to create a new stage.',
-          'Give it a name like "freight_summary" and click "Create stage".',
-          'In the new stage, add customer_id as a column and add a SUM(freight) summarization.',
-          'Run the preview to verify the sub-select results.',
+          'From your orders query, go to the Joins tab and click a suggested join (e.g. + customers). Add a column from the joined table.',
+          'Try a manual join: click "Add related data", pick a table, and set matching columns yourself.',
+          'Go to the Sub-selects tab, create a new stage (e.g. "freight_summary"), add customer_id and a SUM(freight) summarization.',
+          'Preview the results at each step.',
         ],
       },
       {
-        id: 'sub-select-intuitive',
+        id: 'joins-ease',
+        type: 'rating',
+        label: 'How easy was it to add joins?',
+        description: '1 = Very Difficult, 5 = Very Easy',
+        required: true,
+      },
+      {
+        id: 'subselects-intuitive',
         type: 'rating',
         label: 'How intuitive was creating sub-selects?',
         description: '1 = Very Confusing, 5 = Very Intuitive',
         required: true,
       },
       {
-        id: 'sub-select-relationship',
-        type: 'rating',
-        label: 'How clear was the relationship between stages?',
-        description: '1 = Very Unclear, 5 = Very Clear',
-        required: true,
-      },
-      {
-        id: 'sub-select-comments',
+        id: 'joins-subselects-feedback',
         type: 'textarea',
-        label: 'Comments on the sub-select feature?',
-        placeholder: 'Share your thoughts on the sub-select experience\u2026',
-      },
-    ],
-  },
-
-  // ── Section 5: Joins Task ──
-  {
-    id: 'joins',
-    title: 'Joins',
-    description:
-      'Add a join to connect two tables. Try both the suggested joins and adding a manual join.',
-    questions: [
-      {
-        id: 'joins-instructions',
-        type: 'instructions',
-        label: 'Steps to complete',
-        steps: [
-          'Start a query on the Northwind "public.orders" table.',
-          'Go to the Joins tab and look for suggested related tables.',
-          'Click a suggested join (e.g. + customers) to auto-connect the tables.',
-          'Add columns from the joined table (e.g. company_name from customers).',
-          'Now try a manual join: click "Add related data", pick a different table, and set the matching columns yourself.',
-          'Preview the results to verify both joins worked.',
-        ],
-      },
-      {
-        id: 'joins-ease',
-        type: 'rating',
-        label: 'How easy was it to add a join using the suggested joins?',
-        description: '1 = Very Difficult, 5 = Very Easy',
-        required: true,
-      },
-      {
-        id: 'joins-manual-ease',
-        type: 'rating',
-        label: 'How easy was it to add a manual join by selecting tables and columns yourself?',
-        description: '1 = Very Difficult, 5 = Very Easy',
-        required: true,
-      },
-      {
-        id: 'joins-suggestions-helpful',
-        type: 'rating',
-        label: 'How helpful were the suggested joins?',
-        description: '1 = Not Helpful, 5 = Very Helpful',
-        required: true,
-      },
-      {
-        id: 'joins-feedback',
-        type: 'textarea',
-        label: 'Any feedback on the join experience?',
+        label: 'Feedback on joins or sub-selects?',
         placeholder: 'What worked well or could be improved\u2026',
       },
     ],
   },
 
-  // ── Section 6: Sort, Filter & Limit Task ──
-  {
-    id: 'sort-filter-limit',
-    title: 'Sort, Filter & Limit',
-    description:
-      'Explore the sorting, filtering, and row limit features of the Query Designer.',
-    questions: [
-      {
-        id: 'sfl-instructions',
-        type: 'instructions',
-        label: 'Steps to complete',
-        steps: [
-          'Using your Northwind query, go to the Sort & Limit tab.',
-          'Click "Sort/Limit" and sort by order_date descending.',
-          'Set a row limit of 50.',
-          'Go to the Filters tab and add a second filter condition (e.g. customer_id contains "A").',
-          'Switch the logic between AND and OR to see how results change.',
-          'Preview the results after each change.',
-        ],
-      },
-      {
-        id: 'sfl-sort-limit',
-        type: 'rating',
-        label: 'How intuitive were the sort and limit controls?',
-        description: '1 = Very Confusing, 5 = Very Intuitive',
-        required: true,
-      },
-      {
-        id: 'sfl-filters',
-        type: 'rating',
-        label: 'How easy was it to combine multiple filters with AND/OR?',
-        description: '1 = Very Difficult, 5 = Very Easy',
-        required: true,
-      },
-      {
-        id: 'sfl-filter-labels',
-        type: 'rating',
-        label: 'How clear were the filter operator labels ("is exactly", "contains", "is blank", etc.)?',
-        description: '1 = Very Confusing, 5 = Very Clear',
-        required: true,
-      },
-      {
-        id: 'sfl-feedback',
-        type: 'textarea',
-        label: 'Any feedback on filters / sorting?',
-        placeholder: 'Share your experience with these features\u2026',
-      },
-    ],
-  },
-
-  // ── Section 7: Save & Export Task ──
-  {
-    id: 'save-export',
-    title: 'Save & Export',
-    description:
-      'Test saving your work and exporting the generated SQL.',
-    questions: [
-      {
-        id: 'save-export-instructions',
-        type: 'instructions',
-        label: 'Steps to complete',
-        steps: [
-          'Save your query using Ctrl+S (or Cmd+S) or the Save button in the top bar.',
-          'On the Home tab, click "Copy SQL" to copy the generated SQL to your clipboard.',
-          'Click "Export SQL" to download the SQL as a .sql file.',
-          'Click the back arrow to return to the query list and verify your query appears.',
-          'Re-open the saved query and confirm all your columns, filters, and joins are still there.',
-        ],
-      },
-      {
-        id: 'save-export-convenience',
-        type: 'rating',
-        label: 'How convenient was the save experience?',
-        description: '1 = Very Inconvenient, 5 = Very Convenient',
-        required: true,
-      },
-      {
-        id: 'save-export-reload',
-        type: 'rating',
-        label: 'Did your saved query reload correctly with all settings intact?',
-        description: '1 = Nothing loaded, 5 = Everything loaded perfectly',
-        required: true,
-      },
-      {
-        id: 'save-export-usefulness',
-        type: 'rating',
-        label: 'How useful is the SQL export feature?',
-        description: '1 = Not Useful, 5 = Very Useful',
-        required: true,
-      },
-      {
-        id: 'save-export-comments',
-        type: 'textarea',
-        label: 'Comments on save / export?',
-        placeholder: 'Any feedback on saving or exporting\u2026',
-      },
-    ],
-  },
-
-  // ── Section 8: Comparison with Old Query Designer ──
+  // ── Section 5: Comparison ──
   {
     id: 'comparison',
     title: 'Comparison with Old Query Designer',
     description:
-      'If you have used the old Informer Query Designer, please compare it with the new one on each specific area below. If you have not used the old one, select "Haven\'t used the old one" and skip the ratings.',
+      'If you\'ve used the old Informer Query Designer, how does the new one compare?',
     questions: [
       {
         id: 'comparison-preference',
@@ -341,79 +176,43 @@ export const surveySections: SurveySection[] = [
         required: false,
       },
       {
-        id: 'comparison-column-selection',
+        id: 'comparison-improvement',
         type: 'rating',
-        label: 'Selecting columns is easier in the new Query Designer than the old one.',
-        description: '1 = Strongly Disagree, 5 = Strongly Agree',
-      },
-      {
-        id: 'comparison-filter-building',
-        type: 'rating',
-        label: 'Building filters (WHERE clauses) is easier in the new Query Designer.',
-        description: '1 = Strongly Disagree, 5 = Strongly Agree',
-      },
-      {
-        id: 'comparison-join-experience',
-        type: 'rating',
-        label: 'Adding joins is easier in the new Query Designer.',
-        description: '1 = Strongly Disagree, 5 = Strongly Agree',
-      },
-      {
-        id: 'comparison-navigation',
-        type: 'rating',
-        label: 'The ribbon tab layout (Home, Columns, Filters, Joins, etc.) is easier to navigate than the old interface.',
-        description: '1 = Strongly Disagree, 5 = Strongly Agree',
-      },
-      {
-        id: 'comparison-professional',
-        type: 'rating',
-        label: 'The new Query Designer looks more professional and polished.',
+        label: 'Overall, the new Query Designer is an improvement over the old one.',
         description: '1 = Strongly Disagree, 5 = Strongly Agree',
       },
       {
         id: 'comparison-old-better',
         type: 'textarea',
-        label: 'What specific tasks does the old Query Designer handle better?',
-        placeholder: 'Be specific: e.g. "Adding multiple filters was faster because..." or "The old join UI showed the schema more clearly..."',
-      },
-      {
-        id: 'comparison-new-better',
-        type: 'textarea',
-        label: 'What specific tasks does the new Query Designer handle better?',
-        placeholder: 'Be specific: e.g. "The suggested joins saved me time..." or "The SQL preview helped me verify..."',
+        label: 'What does the old Query Designer do better?',
+        placeholder: 'Be specific if you can\u2026',
       },
     ],
   },
 
-  // ── Section 9: Open-Ended Feedback ──
+  // ── Section 6: Final Feedback ──
   {
-    id: 'open-ended',
-    title: 'Open-Ended Feedback',
+    id: 'final-feedback',
+    title: 'Final Feedback',
     description:
-      'Please share any additional thoughts. All fields are optional but greatly appreciated.',
+      'Almost done! A few last questions.',
     questions: [
       {
         id: 'favorite-feature',
         type: 'textarea',
         label: 'What was your favorite feature?',
-        placeholder: 'Tell us what stood out to you\u2026',
+        placeholder: 'What stood out to you\u2026',
       },
       {
         id: 'most-improve',
         type: 'textarea',
-        label: 'What would you most want to improve?',
+        label: 'What needs the most improvement?',
         placeholder: 'What needs the most work\u2026',
-      },
-      {
-        id: 'missing-features',
-        type: 'textarea',
-        label: 'Were there any features you expected but didn\'t find?',
-        placeholder: 'e.g. "I expected to be able to..." or "In the old QD I could..."',
       },
       {
         id: 'other-comments',
         type: 'textarea',
-        label: 'Any other comments or suggestions?',
+        label: 'Any other comments?',
         placeholder: 'Anything else you\'d like to share\u2026',
       },
       {
@@ -426,12 +225,12 @@ export const surveySections: SurveySection[] = [
     ],
   },
 
-  // ── Section 10: Thank You ──
+  // ── Thank You ──
   {
     id: 'thank-you',
     title: 'Thank You',
     description:
-      'Your feedback has been recorded. Thank you for taking the time to evaluate the new Query Designer \u2014 your input is invaluable in helping us build a better product.',
+      'Your feedback has been recorded \u2014 thank you! You can revisit this page anytime to update your responses.',
     questions: [],
   },
 ]

@@ -61,15 +61,6 @@ export function SectionView({ section, answers, onAnswer }: SectionViewProps) {
         </div>
       )}
 
-      {/* Thank-you extra text */}
-      {isThankYou && (
-        <div className="px-6 pb-6 text-center">
-          <p className="text-sm text-muted-foreground">
-            If you have additional feedback later, you can revisit this page to update your responses.
-          </p>
-        </div>
-      )}
-
       {/* Comparison section note */}
       {section.id === 'comparison' && (
         <div className="mx-6 -mt-2 mb-6 rounded-lg bg-accent/50 border border-accent p-3">

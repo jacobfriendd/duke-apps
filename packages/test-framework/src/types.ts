@@ -3,6 +3,7 @@ export interface SurveyResponse {
   startedAt: string
   completedAt?: string
   sections: Record<string, SectionResponse>
+  sessionData?: unknown
 }
 
 export interface SectionResponse {

@@ -3,6 +3,7 @@ import type { Answer, SurveyResponse, SectionResponse } from '@/types'
 import { surveySections } from '@/data/sections'
 import { ProgressBar } from './ProgressBar'
 import { SectionView } from './SectionView'
+import { SessionDataUpload } from './SessionDataUpload'
 import { ChevronLeft, ChevronRight, CheckCircle2, Send, AlertCircle } from 'lucide-react'
 
 const STORAGE_KEY = 'qd-test-framework-response'
@@ -43,6 +44,7 @@ export function Survey() {
       sections: {},
     }
   })
+  const [sessionData, setSessionData] = useState<unknown | null>(() => response.sessionData ?? null)
   const [animating, setAnimating] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
 
@@ -169,7 +171,7 @@ export function Survey() {
     setValidationError(null)
     const completedAt = new Date().toISOString()
     setResponse((prev) => {
-      const updated = { ...prev, completedAt }
+      const updated = { ...prev, completedAt, sessionData }
       // Submit to server
       fetch('/api/_server/responses', {
         method: 'POST',
@@ -188,8 +190,7 @@ export function Survey() {
 
   const isFirstSection = currentIndex === 0
   const isThankYouSection = currentSection.id === 'thank-you'
-  const isLastContentSection = currentIndex === surveySections.length - 2 // open-ended is last content section
-  const isCompleted = !!response.completedAt
+  const isLastContentSection = currentIndex === surveySections.length - 2
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -213,6 +214,13 @@ export function Survey() {
               answers={getSectionAnswers(currentSection.id)}
               onAnswer={handleAnswer}
             />
+
+            {/* Session data upload on the final feedback section */}
+            {currentSection.id === 'final-feedback' && (
+              <div className="mt-6 rounded-xl border border-border bg-card px-6 py-5 shadow-sm">
+                <SessionDataUpload sessionData={sessionData} onSessionData={setSessionData} />
+              </div>
+            )}
           </div>
 
           {/* Validation error */}
@@ -250,14 +258,11 @@ export function Survey() {
                   <button
                     type="button"
                     onClick={handleSubmit}
-                    disabled={isCompleted}
                     className={[
                       'inline-flex items-center gap-2 px-6 py-2.5 rounded-lg',
                       'text-sm font-semibold text-primary-foreground',
                       'transition-all duration-150',
-                      isCompleted
-                        ? 'bg-muted text-muted-foreground cursor-not-allowed'
-                        : 'bg-primary hover:bg-primary/90 shadow-md hover:shadow-lg',
+                      'bg-primary hover:bg-primary/90 shadow-md hover:shadow-lg',
                       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                     ].join(' ')}
                   >

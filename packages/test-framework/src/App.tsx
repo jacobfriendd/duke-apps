@@ -75,9 +75,9 @@ function AdminView() {
       }
     }
 
-    const headers = ['Name', 'Role', 'Started', 'Completed', ...questionCols.map(c => c.label)]
+    const headers = ['Name', 'Role', 'Started', 'Completed', 'Has Session Data', ...questionCols.map(c => c.label)]
     const rows = responses.map(r => {
-      const fixed = [r.name ?? '', r.role ?? '', r.started_at, r.completed_at ?? '']
+      const fixed = [r.name ?? '', r.role ?? '', r.started_at, r.completed_at ?? '', r.session_data ? 'Yes' : 'No']
       const answers = questionCols.map(col => {
         const answer = r.sections?.[col.sectionId]?.answers?.[col.questionId]
         if (!answer) return ''
