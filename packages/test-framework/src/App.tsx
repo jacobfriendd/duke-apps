@@ -30,6 +30,7 @@ interface StoredResponse {
   role: string | null
   started_at: string
   completed_at: string | null
+  session_data: string | null
   sections: Record<string, { answers: Record<string, Answer> }>
   created_at: string
   updated_at: string
