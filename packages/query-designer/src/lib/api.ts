@@ -18,17 +18,7 @@ function detectDialect(type: string): SqlDialect {
   return 'generic'
 }
 
-const FALLBACK_DATASOURCES: DatasourceInfo[] = [
-  {
-    id: 'admin:northwind',
-    naturalId: 'admin:northwind',
-    name: 'Northwind',
-    type: 'postgres',
-    family: 'sql',
-    dialect: 'postgresql',
-    schemas: ['public'],
-  },
-]
+// No hardcoded fallback — datasources are always fetched dynamically from the platform
 
 export interface SqlPreviewResult {
   rows: Record<string, unknown>[]
@@ -85,7 +75,7 @@ export async function pingDatasource(datasourceId: string): Promise<boolean> {
     const res = await fetchWithTimeout(
       `/api/datasources/${datasourceId}/_ping`,
       { method: 'POST' },
-      10_000,
+      5_000,
     )
     return res.ok
   } catch {
@@ -94,39 +84,69 @@ export async function pingDatasource(datasourceId: string): Promise<boolean> {
 }
 
 export async function listDatasources(): Promise<DatasourceInfo[]> {
+  let rows: Record<string, unknown>[] = []
+
+  // Try the platform listing endpoint
   try {
-    const rows = await requestJson<Record<string, unknown>[]>(
-      '/api/datasources-list',
-      undefined,
-      'Failed to load datasources'
-    )
-
-    const datasources = rows
-      .filter((row) => row.family === 'sql' || (Array.isArray(row.languages) && (row.languages as string[]).includes('sql')))
-      .map((row): DatasourceInfo => {
-        const type = String(row.type ?? 'unknown')
-        return {
-          id: String(row.naturalId ?? row.id ?? ''),
-          naturalId: String(row.naturalId ?? row.id ?? ''),
-          name: String(row.name ?? row.naturalId ?? row.id ?? 'Datasource'),
-          type,
-          family: String(row.family ?? 'unknown'),
-          dialect: detectDialect(type),
-          schemas: Array.isArray(row.schemas) ? row.schemas.map(value => String(value)) : [],
-        }
-      })
-      .filter(row => row.id)
-
-    if (datasources.length === 0) return FALLBACK_DATASOURCES
-
-    // Ping all datasources in parallel to check connectivity
-    const pings = await Promise.all(
-      datasources.map(ds => pingDatasource(ds.naturalId))
-    )
-    return datasources.map((ds, i) => ({ ...ds, reachable: pings[i] }))
+    const res = await fetchWithTimeout('/api/datasources-list', undefined, 5_000)
+    if (res.ok) {
+      const data = await res.json()
+      rows = Array.isArray(data) ? data : (data?.items ?? data?.datasources ?? data?.results ?? [])
+    }
   } catch {
-    return FALLBACK_DATASOURCES
+    // listing endpoint unavailable
   }
+
+  // If listing returned nothing, discover datasources by probing known IDs.
+  // The Informer platform may not expose a list endpoint but individual
+  // datasource operations still work.
+  if (rows.length === 0) {
+    const probeIds = ['admin:northwind', 'northwind', 'admin:postgres', 'postgres', 'admin:mysql', 'mysql', 'admin:oracle', 'oracle']
+    const probes = await Promise.all(probeIds.map(async (id): Promise<DatasourceInfo | null> => {
+      const reachable = await pingDatasource(id)
+      if (!reachable) return null
+      // Try to get tables to confirm it's real and extract name
+      const name = id.includes(':') ? id.split(':')[1] : id
+      return {
+        id,
+        naturalId: id,
+        name: name.charAt(0).toUpperCase() + name.slice(1),
+        type: 'unknown',
+        family: 'sql',
+        dialect: detectDialect(name),
+        schemas: [],
+        reachable: true,
+        supportsSQL: true,
+      }
+    }))
+    return probes.filter((ds): ds is DatasourceInfo => ds !== null)
+  }
+
+  const datasources = rows
+    .map((row): DatasourceInfo => {
+      const type = String(row.type ?? 'unknown')
+      const family = String(row.family ?? 'unknown')
+      const languages = Array.isArray(row.languages) ? (row.languages as string[]) : []
+      return {
+        id: String(row.naturalId ?? row.id ?? ''),
+        naturalId: String(row.naturalId ?? row.id ?? ''),
+        name: String(row.name ?? row.naturalId ?? row.id ?? 'Datasource'),
+        type,
+        family,
+        dialect: detectDialect(type),
+        schemas: Array.isArray(row.schemas) ? row.schemas.map(value => String(value)) : [],
+        supportsSQL: family === 'sql' || languages.includes('sql'),
+      }
+    })
+    .filter(row => row.id)
+
+  if (datasources.length === 0) return []
+
+  // Ping all datasources in parallel to check connectivity
+  const pings = await Promise.all(
+    datasources.map(ds => pingDatasource(ds.naturalId))
+  )
+  return datasources.map((ds, i) => ({ ...ds, reachable: pings[i] }))
 }
 
 export async function getDatasourceTables(datasourceId: string): Promise<DatasourceTable[]> {
@@ -156,14 +176,27 @@ export async function getDatasourceTables(datasourceId: string): Promise<Datasou
       .filter(row => row.restId && row.mappingId)
       .sort((a, b) => a.label.localeCompare(b.label))
   } catch {
-    const preview = await executeDatasourceSql(
-      datasourceId,
-      "SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema') ORDER BY table_schema, table_name",
-      500
-    )
+    // Try dialect-aware fallback queries
+    const fallbackQueries: Record<string, string> = {
+      oracle: "SELECT owner AS table_schema, table_name FROM all_tables WHERE owner NOT IN ('SYS','SYSTEM','OUTLN','DIP') ORDER BY owner, table_name",
+      default: "SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema') ORDER BY table_schema, table_name",
+    }
+
+    // Detect dialect from datasourceId if possible — for fallback we try the default (pg/mysql) first
+    let preview: SqlPreviewResult
+    try {
+      preview = await executeDatasourceSql(datasourceId, fallbackQueries.default, 500)
+    } catch {
+      // information_schema failed — try Oracle-style catalog
+      try {
+        preview = await executeDatasourceSql(datasourceId, fallbackQueries.oracle, 500)
+      } catch {
+        return [] // No fallback available for this database type
+      }
+    }
 
     return preview.rows.map((row): DatasourceTable => {
-      const schemaId = String(row.table_schema ?? 'public')
+      const schemaId = String(row.table_schema ?? row.owner ?? 'public')
       const mappingId = String(row.table_name ?? '')
       return {
         id: `${datasourceId}:${schemaId}+${mappingId}`,
@@ -205,11 +238,22 @@ export async function getDatasourceColumns(datasourceId: string, tableId: string
       .sort((a, b) => a.ordinalPosition - b.ordinalPosition)
   } catch {
     const [schemaId, mappingId] = tableId.split('+')
-    const preview = await executeDatasourceSql(
-      datasourceId,
-      `SELECT column_name, data_type, ordinal_position FROM information_schema.columns WHERE table_schema = '${schemaId}' AND table_name = '${mappingId}' ORDER BY ordinal_position`,
-      500
-    )
+    const safeSchema = schemaId.replace(/'/g, "''")
+    const safeMapping = mappingId.replace(/'/g, "''")
+
+    const fallbackDefault = `SELECT column_name, data_type, ordinal_position FROM information_schema.columns WHERE table_schema = '${safeSchema}' AND table_name = '${safeMapping}' ORDER BY ordinal_position`
+    const fallbackOracle = `SELECT column_name, data_type, column_id AS ordinal_position FROM all_tab_columns WHERE owner = '${safeSchema}' AND table_name = '${safeMapping}' ORDER BY column_id`
+
+    let preview: SqlPreviewResult
+    try {
+      preview = await executeDatasourceSql(datasourceId, fallbackDefault, 500)
+    } catch {
+      try {
+        preview = await executeDatasourceSql(datasourceId, fallbackOracle, 500)
+      } catch {
+        return []
+      }
+    }
 
     return preview.rows.map((row): DatasourceColumn => ({
       id: `${tableId}:${String(row.column_name ?? '')}`,

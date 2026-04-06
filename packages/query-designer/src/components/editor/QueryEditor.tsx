@@ -29,6 +29,7 @@ import {
   Trash2,
   Undo2,
   X,
+  Activity,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -48,6 +49,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { NlBar } from './NlBar'
 import { TabbedResults } from './TabbedResults'
 import { useQueryEditor } from '@/hooks/useQueryEditor'
+import { useBehaviorTracker } from '@/hooks/useBehaviorTracker'
 import {
   createQuery,
   executeDatasourceSql,
@@ -258,6 +260,7 @@ function emptySortForm(limit?: number): SortForm {
 export function QueryEditor({ record, onBack, onSaved }: Props) {
   const initial = normalizeDefinition(record)
   const { definition, dispatch, setDefinition, setName, undo, redo, canUndo, canRedo } = useQueryEditor(initial)
+  const bt = useBehaviorTracker()
 
   const [dbId, setDbId] = useState<number | null>(record?.id ?? null)
   const [activeStageId, setActiveStageId] = useState<StageId>('main')
@@ -349,6 +352,11 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
     setNameInput(definition.name)
   }, [definition.name])
 
+  // Sync query metadata into behavior tracker
+  useEffect(() => {
+    bt.setQueryInfo(definition.id, definition.name)
+  }, [bt, definition.id, definition.name])
+
   // ── Auto-save on definition change (debounced 1.2s) ─────────────────
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const isSaving = useRef(false)
@@ -358,14 +366,14 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
     function handleKeyDown(event: KeyboardEvent) {
       const mod = event.metaKey || event.ctrlKey
       if (!mod) return
-      if (event.key === 'z' && !event.shiftKey) { event.preventDefault(); undo() }
-      if (event.key === 'z' && event.shiftKey) { event.preventDefault(); redo() }
-      if (event.key === 'y') { event.preventDefault(); redo() }
+      if (event.key === 'z' && !event.shiftKey) { event.preventDefault(); undo(); bt.trackAction('undo') }
+      if (event.key === 'z' && event.shiftKey) { event.preventDefault(); redo(); bt.trackAction('redo') }
+      if (event.key === 'y') { event.preventDefault(); redo(); bt.trackAction('redo') }
       if (event.key === 's') { event.preventDefault() } // prevent browser save dialog
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [undo, redo])
+  }, [undo, redo, bt])
 
   useEffect(() => {
     let cancelled = false
@@ -374,6 +382,9 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
     listDatasources()
       .then(items => {
         if (!cancelled) setDatasources(items)
+      })
+      .catch(() => {
+        if (!cancelled) setDatasources([])
       })
       .finally(() => {
         if (!cancelled) setDatasourcesLoading(false)
@@ -607,6 +618,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
     const result = decompileSql(sqlDraft, sourceColumns)
     if (result.errors.length > 0) {
       setSqlParseError(result.errors[0])
+      bt.trackError('sql_parse_error', result.errors[0], 'applySqlEdit')
       return
     }
     const patch = result.patch
@@ -614,13 +626,15 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
     setDefinition(merged)
     setSqlEditing(false)
     setSqlParseError(null)
-  }, [sqlDraft, sourceColumns, definition, setDefinition])
+    bt.trackAction('apply_sql_edit')
+  }, [sqlDraft, sourceColumns, definition, setDefinition, bt])
 
   const cancelSqlEdit = useCallback(() => {
     setSqlDraft(compiled.sql || '')
     setSqlEditing(false)
     setSqlParseError(null)
-  }, [compiled.sql])
+    bt.trackAction('cancel_sql_edit')
+  }, [compiled.sql, bt])
 
   const resultsEmptyState = useMemo(() => {
     if (!definition.datasource) {
@@ -650,6 +664,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
   const runPreview = useCallback(async (sql: string) => {
     if (!definition.datasource || !sql) return
 
+    bt.trackAction('run_preview')
     const requestId = ++previewRequest.current
     setPreviewLoading(true)
     setPreviewError(null)
@@ -661,12 +676,14 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
       setPreviewUpdatedAt(new Date().toLocaleTimeString())
     } catch (error) {
       if (requestId !== previewRequest.current) return
+      const msg = error instanceof Error ? error.message : 'Could not run query preview'
       setPreviewRows([])
-      setPreviewError(error instanceof Error ? error.message : 'Could not run query preview')
+      setPreviewError(msg)
+      bt.trackError('preview_error', msg, 'runPreview')
     } finally {
       if (requestId === previewRequest.current) setPreviewLoading(false)
     }
-  }, [definition.datasource])
+  }, [definition.datasource, bt])
 
   useEffect(() => {
     if (!definition.datasource || !compiled.sql) {
@@ -731,6 +748,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
   function commitName() {
     setName(nameInput.trim() || definition.name)
     setEditingName(false)
+    bt.trackAction('rename_query')
   }
 
   function handleApplySource() {
@@ -752,11 +770,14 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
     setDefinition(next)
     setActiveStageId('main')
     setSourceDialogOpen(false)
+    bt.trackAction('choose_source', { datasource: datasource.name, table: table.name })
+    bt.trackDialogClose('source', true)
   }
 
   function openColumnPicker() {
     setColumnPickerSearch('')
     setColumnPickerOpen(true)
+    bt.trackDialogOpen('column_picker')
   }
 
   function isColumnSelected(optionKey: string): boolean {
@@ -781,6 +802,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
 
     if (existing) {
       dispatch({ type: 'REMOVE_FIELD', target, fieldId: existing.id })
+      bt.trackAction('remove_column', { column: option.raw })
     } else {
       dispatch({
         type: 'ADD_FIELD',
@@ -792,6 +814,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
           reference: option.reference,
         },
       })
+      bt.trackAction('add_column', { column: option.raw })
     }
   }
 
@@ -801,6 +824,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
     const [moved] = reordered.splice(fromIdx, 1)
     reordered.splice(toIdx, 0, moved)
     dispatch({ type: 'REORDER_FIELDS', target, fields: reordered })
+    bt.trackAction('reorder_columns', { from: fromIdx, to: toIdx })
   }
 
   // Group available columns by source for the picker
@@ -821,6 +845,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
       aggregate: mode === 'aggregate' ? 'count' : 'none',
     })
     setFieldDialogOpen(true)
+    bt.trackDialogOpen(`field_${mode}`)
   }
 
   function handleAddField() {
@@ -837,6 +862,8 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
         },
       })
       setFieldDialogOpen(false)
+      bt.trackAction('add_formula')
+      bt.trackDialogClose(`field_${fieldDialogMode}`, true)
       return
     }
 
@@ -854,6 +881,8 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
       },
     })
     setFieldDialogOpen(false)
+    bt.trackAction(fieldForm.aggregate !== 'none' ? 'add_aggregate' : 'add_column', { column: option.raw, aggregate: fieldForm.aggregate })
+    bt.trackDialogClose(`field_${fieldDialogMode}`, true)
   }
 
   function conditionLabel(condition: CriteriaCondition): string {
@@ -878,6 +907,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
     })
     setEditingConditionId(condition.id)
     setFilterDialogOpen(true)
+    bt.trackDialogOpen('filter_edit')
   }
 
   function handleAddFilter() {
@@ -918,6 +948,8 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
     }
     setFilterDialogOpen(false)
     setFilterForm(emptyFilterForm())
+    bt.trackAction(editingConditionId ? 'edit_filter' : 'add_filter', { operator: filterForm.operator })
+    bt.trackDialogClose(editingConditionId ? 'filter_edit' : 'filter', true)
     setEditingConditionId(null)
   }
 
@@ -946,6 +978,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
         })),
       },
     })
+    bt.trackAction('suggested_join', { table: table.name })
   }
 
   function handleAddJoin() {
@@ -982,9 +1015,12 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
 
     if (editingJoinId) {
       dispatch({ type: 'UPDATE_JOIN', target, join: joinData })
+      bt.trackAction('edit_join', { table: table.mappingId, type: joinForm.type })
     } else {
       dispatch({ type: 'ADD_JOIN', target, join: joinData })
+      bt.trackAction('add_join', { table: table.mappingId, type: joinForm.type })
     }
+    bt.trackDialogClose('join', true)
     setJoinDialogOpen(false)
     setJoinForm(emptyJoinForm())
     setEditingJoinId(null)
@@ -1003,6 +1039,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
       })),
     })
     setJoinDialogOpen(true)
+    bt.trackDialogOpen('join_edit')
   }
 
   function handleAddSort() {
@@ -1018,9 +1055,13 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
       }
 
       dispatch({ type: 'ADD_SORT', target, sort })
+      bt.trackAction('add_sort', { field: option.raw, direction: sortForm.direction })
     }
 
-    dispatch({ type: 'SET_LIMIT', target, limit: Number.isFinite(limit) && limit > 0 ? limit : undefined })
+    const parsedLimit = Number.isFinite(limit) && limit > 0 ? limit : undefined
+    dispatch({ type: 'SET_LIMIT', target, limit: parsedLimit })
+    if (parsedLimit) bt.trackAction('set_limit', { limit: parsedLimit })
+    bt.trackDialogClose('sort', true)
     setSortDialogOpen(false)
   }
 
@@ -1036,6 +1077,8 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
     setActiveStageId(id)
     setSubqueryAlias('')
     setSubqueryDialogOpen(false)
+    bt.trackAction('add_subquery', { alias })
+    bt.trackDialogClose('subquery', true)
   }
 
   function handleAddSubqueryPreset(preset: 'summarize' | 'filter' | 'top_n') {
@@ -1052,6 +1095,8 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
     dispatch({ type: 'ADD_SUBQUERY', alias: presetNames[preset], id, source: lastStep })
     setActiveStageId(id)
     setSubqueryDialogOpen(false)
+    bt.trackAction('add_subquery', { preset })
+    bt.trackDialogClose('subquery', true)
     // Switch to the appropriate ribbon tab for the preset
     if (preset === 'summarize') setRibbonTab('columns')
     if (preset === 'filter') setRibbonTab('filters')
@@ -1061,11 +1106,43 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
   function handleRemoveSubquery(id: string) {
     dispatch({ type: 'REMOVE_SUBQUERY', subqueryId: id })
     if (activeStageId === id) setActiveStageId('main')
+    bt.trackAction('remove_subquery')
   }
 
   async function copySql() {
     if (!compiled.sql) return
     await navigator.clipboard.writeText(compiled.sql)
+    bt.trackAction('copy_sql')
+  }
+
+  function exportSessionData() {
+    const behaviorData = bt.exportData()
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      query: {
+        id: definition.id,
+        name: definition.name,
+        description: definition.description,
+        datasource: definition.datasourceLabel || definition.datasource,
+        table: definition.tableLabel || definition.table,
+        sql: compiled.sql,
+        fieldCount: definition.fields.length,
+        filterCount: definition.criteria.conditions.length,
+        joinCount: definition.joins.length,
+        sortCount: definition.sortLimit.sorts.length,
+        subqueryCount: definition.subqueries.length,
+      },
+      previewResults: previewRows,
+      behavioralData: behaviorData,
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${definition.name || 'query'}-session-data.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    bt.trackAction('export_session_data')
   }
 
   return (
@@ -1111,10 +1188,10 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
           </div>
 
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="h-7 w-7 rounded-md" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)">
+            <Button variant="ghost" size="icon" className="h-7 w-7 rounded-md" onClick={() => { undo(); bt.trackAction('undo') }} disabled={!canUndo} title="Undo (Ctrl+Z)">
               <Undo2 className="h-3.5 w-3.5" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7 rounded-md" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">
+            <Button variant="ghost" size="icon" className="h-7 w-7 rounded-md" onClick={() => { redo(); bt.trackAction('redo') }} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">
               <Redo2 className="h-3.5 w-3.5" />
             </Button>
 
@@ -1131,7 +1208,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
             <div className="flex items-center gap-1.5">
               <Switch
                 checked={betaAiEnabled}
-                onCheckedChange={setBetaAiEnabled}
+                onCheckedChange={v => { setBetaAiEnabled(v); bt.trackAction('toggle_ai', { enabled: v }) }}
               />
               <span className="text-[11px] text-slate-500">
                 AI
@@ -1201,7 +1278,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
         )}
 
         <div className={cn('ribbon-container', !isMainStage && 'ribbon-subselect')}>
-          <Tabs value={ribbonTab} onValueChange={value => setRibbonTab(value as RibbonTab)}>
+          <Tabs value={ribbonTab} onValueChange={value => { bt.trackTabSwitch(ribbonTab, value); setRibbonTab(value as RibbonTab) }}>
             <TabsList className="ribbon-tab-strip">
               <TabsTrigger value="home" className="ribbon-tab">Home</TabsTrigger>
               <TabsTrigger value="columns" className="ribbon-tab">
@@ -1243,8 +1320,8 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                 <RibbonGroup title="Quick Add">
                   <div className="grid grid-cols-2 gap-1">
                     <button className="h-6 rounded border border-transparent px-2 text-[10px] font-medium text-slate-600 transition-colors hover:border-sky-200 hover:bg-sky-50/60" onClick={openColumnPicker} disabled={!selectedSourceTableId}>+ Column</button>
-                    <button className="h-6 rounded border border-transparent px-2 text-[10px] font-medium text-slate-600 transition-colors hover:border-sky-200 hover:bg-sky-50/60" onClick={() => { setEditingConditionId(null); setFilterForm(emptyFilterForm()); setFilterDialogOpen(true) }} disabled={availableColumnOptions.length === 0}>+ Filter</button>
-                    <button className="h-6 rounded border border-transparent px-2 text-[10px] font-medium text-slate-600 transition-colors hover:border-sky-200 hover:bg-sky-50/60" onClick={() => setJoinDialogOpen(true)} disabled={!selectedSourceTableId}>+ Join</button>
+                    <button className="h-6 rounded border border-transparent px-2 text-[10px] font-medium text-slate-600 transition-colors hover:border-sky-200 hover:bg-sky-50/60" onClick={() => { setEditingConditionId(null); setFilterForm(emptyFilterForm()); setFilterDialogOpen(true); bt.trackDialogOpen('filter') }} disabled={availableColumnOptions.length === 0}>+ Filter</button>
+                    <button className="h-6 rounded border border-transparent px-2 text-[10px] font-medium text-slate-600 transition-colors hover:border-sky-200 hover:bg-sky-50/60" onClick={() => { setJoinDialogOpen(true); bt.trackDialogOpen('join') }} disabled={!selectedSourceTableId}>+ Join</button>
                     <button className="h-6 rounded border border-transparent px-2 text-[10px] font-medium text-slate-600 transition-colors hover:border-sky-200 hover:bg-sky-50/60" onClick={() => { setSortForm(emptySortForm(activeSortLimit.limit)); setSortDialogOpen(true) }} disabled={availableColumnOptions.length === 0}>+ Sort</button>
                   </div>
                 </RibbonGroup>
@@ -1264,7 +1341,9 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                     a.download = `${definition.name || 'query'}.sql`
                     a.click()
                     URL.revokeObjectURL(url)
+                    bt.trackAction('export_sql')
                   }} disabled={!compiled.sql} />
+                  <CommandButton icon={Activity} label="Export Session" onClick={exportSessionData} />
                 </RibbonGroup>
 
                 {!selectedSourceTableId && (
@@ -1315,7 +1394,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                           )}
                           <button
                             className="shrink-0 rounded p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-destructive"
-                            onClick={() => dispatch({ type: 'REMOVE_FIELD', target, fieldId: field.id })}
+                            onClick={() => { dispatch({ type: 'REMOVE_FIELD', target, fieldId: field.id }); bt.trackAction('remove_column', { column: field.column }) }}
                             title="Remove field"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -1406,7 +1485,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
             {ribbonTab === 'filters' && (
               <>
                 <RibbonGroup title="Filters">
-                  <CommandButton icon={Filter} label="Add condition" onClick={() => { setEditingConditionId(null); setFilterForm(emptyFilterForm()); setFilterDialogOpen(true) }} disabled={availableColumnOptions.length === 0} />
+                  <CommandButton icon={Filter} label="Add condition" onClick={() => { setEditingConditionId(null); setFilterForm(emptyFilterForm()); setFilterDialogOpen(true); bt.trackDialogOpen('filter') }} disabled={availableColumnOptions.length === 0} />
                 </RibbonGroup>
                 <RibbonGroup title="Logic">
                   <div className="flex items-center gap-1">
@@ -1419,7 +1498,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                             ? 'border-sky-500 bg-sky-600 text-white shadow-sm'
                             : 'border-transparent bg-transparent text-slate-600 hover:border-sky-200 hover:bg-sky-50/60'
                         )}
-                        onClick={() => dispatch({ type: 'SET_CRITERIA_OPERATOR', target, operator })}
+                        onClick={() => { dispatch({ type: 'SET_CRITERIA_OPERATOR', target, operator }); bt.trackAction('change_logic_operator', { operator }) }}
                       >
                         {operator}
                       </button>
@@ -1455,7 +1534,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                             </button>
                             <button
                               className="shrink-0 rounded p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-destructive"
-                              onClick={() => dispatch({ type: 'REMOVE_CONDITION', target, conditionId: node.id })}
+                              onClick={() => { dispatch({ type: 'REMOVE_CONDITION', target, conditionId: node.id }); bt.trackAction('remove_filter') }}
                               title="Remove condition"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -1472,7 +1551,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
             {ribbonTab === 'joins' && (
               <>
                 <RibbonGroup title="Connect Tables">
-                  <CommandButton icon={GitMerge} label="Add related data" onClick={() => setJoinDialogOpen(true)} disabled={!selectedSourceTableId} />
+                  <CommandButton icon={GitMerge} label="Add related data" onClick={() => { setJoinDialogOpen(true); bt.trackDialogOpen('join') }} disabled={!selectedSourceTableId} />
                 </RibbonGroup>
                 {activeJoins.length === 0 && selectedSourceTableId && (
                   <RibbonGroup title="">
@@ -1540,7 +1619,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                             </button>
                             <button
                               className="shrink-0 rounded p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-destructive"
-                              onClick={() => dispatch({ type: 'REMOVE_JOIN', target, joinId: join.id })}
+                              onClick={() => { dispatch({ type: 'REMOVE_JOIN', target, joinId: join.id }); bt.trackAction('remove_join') }}
                               title="Disconnect this table"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -1577,7 +1656,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                           <span className="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-medium uppercase text-slate-500">{sort.direction}</span>
                           <button
                             className="shrink-0 rounded p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-destructive"
-                            onClick={() => dispatch({ type: 'REMOVE_SORT', target, field: sort.field })}
+                            onClick={() => { dispatch({ type: 'REMOVE_SORT', target, field: sort.field }); bt.trackAction('remove_sort') }}
                             title="Remove sort"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -1589,7 +1668,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                           <span className="min-w-0 flex-1">Limit {activeSortLimit.limit} rows</span>
                           <button
                             className="shrink-0 rounded p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-destructive"
-                            onClick={() => dispatch({ type: 'SET_LIMIT', target, limit: undefined })}
+                            onClick={() => { dispatch({ type: 'SET_LIMIT', target, limit: undefined }); bt.trackAction('remove_limit') }}
                             title="Remove limit"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -1657,7 +1736,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                   value={sqlDraft || '-- Choose a datasource and table to begin'}
                   onChange={e => {
                     setSqlDraft(e.target.value)
-                    if (!sqlEditing) setSqlEditing(true)
+                    if (!sqlEditing) { setSqlEditing(true); bt.trackAction('edit_sql_directly') }
                     setSqlParseError(null)
                   }}
                   onKeyDown={e => {
@@ -1758,7 +1837,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
 
       </div>
 
-      <Dialog open={sourceDialogOpen} onOpenChange={setSourceDialogOpen}>
+      <Dialog open={sourceDialogOpen} onOpenChange={open => { setSourceDialogOpen(open); if (open) bt.trackDialogOpen('source'); else if (!open) bt.trackDialogClose('source', false) }}>
         <DialogContent className="max-w-2xl rounded-xl border-slate-200 bg-[#f8fbff] p-0 shadow-2xl">
           <DialogHeader className="border-b border-slate-200 px-6 py-5">
             <DialogTitle className="flex items-center gap-2 text-slate-900">
@@ -1834,7 +1913,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={fieldDialogOpen} onOpenChange={setFieldDialogOpen}>
+      <Dialog open={fieldDialogOpen} onOpenChange={open => { setFieldDialogOpen(open); if (!open) bt.trackDialogClose(`field_${fieldDialogMode}`, false) }}>
         <DialogContent className="max-w-xl rounded-xl border-slate-200 bg-[#f8fbff] p-0 shadow-2xl">
           <DialogHeader className="border-b border-slate-200 px-6 py-5">
             <DialogTitle className="flex items-center gap-2 text-slate-900">
@@ -1906,7 +1985,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={filterDialogOpen} onOpenChange={open => { setFilterDialogOpen(open); if (!open) setEditingConditionId(null) }}>
+      <Dialog open={filterDialogOpen} onOpenChange={open => { setFilterDialogOpen(open); if (!open) { bt.trackDialogClose(editingConditionId ? 'filter_edit' : 'filter', false); setEditingConditionId(null) } }}>
         <DialogContent className="max-w-xl rounded-xl border-slate-200 bg-[#f8fbff] p-0 shadow-2xl">
           <DialogHeader className="border-b border-slate-200 px-6 py-5">
             <DialogTitle className="flex items-center gap-2 text-slate-900">
@@ -2000,7 +2079,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={joinDialogOpen} onOpenChange={setJoinDialogOpen}>
+      <Dialog open={joinDialogOpen} onOpenChange={open => { setJoinDialogOpen(open); if (!open) bt.trackDialogClose(editingJoinId ? 'join_edit' : 'join', false) }}>
         <DialogContent className="max-w-3xl rounded-xl border-slate-200 bg-[#f8fbff] p-0 shadow-2xl">
           <DialogHeader className="border-b border-slate-200 px-6 py-5">
             <DialogTitle className="flex items-center gap-2 text-slate-900">
@@ -2122,7 +2201,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={sortDialogOpen} onOpenChange={setSortDialogOpen}>
+      <Dialog open={sortDialogOpen} onOpenChange={open => { setSortDialogOpen(open); if (open) bt.trackDialogOpen('sort'); else bt.trackDialogClose('sort', false) }}>
         <DialogContent className="max-w-xl rounded-xl border-slate-200 bg-[#f8fbff] p-0 shadow-2xl">
           <DialogHeader className="border-b border-slate-200 px-6 py-5">
             <DialogTitle className="flex items-center gap-2 text-slate-900">
@@ -2175,7 +2254,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={subqueryDialogOpen} onOpenChange={val => { setSubqueryDialogOpen(val); if (!val) setSubqueryAlias('') }}>
+      <Dialog open={subqueryDialogOpen} onOpenChange={val => { setSubqueryDialogOpen(val); if (val) bt.trackDialogOpen('subquery'); else { bt.trackDialogClose('subquery', false); setSubqueryAlias('') } }}>
         <DialogContent className="max-w-lg rounded-xl border-slate-200 bg-[#f8fbff] p-0 shadow-2xl">
           <DialogHeader className="border-b border-slate-200 px-6 py-5">
             <DialogTitle className="flex items-center gap-2 text-slate-900">
@@ -2260,7 +2339,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={columnPickerOpen} onOpenChange={setColumnPickerOpen}>
+      <Dialog open={columnPickerOpen} onOpenChange={open => { setColumnPickerOpen(open); if (!open) bt.trackDialogClose('column_picker', true) }}>
         <DialogContent className="max-w-3xl rounded-xl border-slate-200 bg-[#f8fbff] p-0 shadow-2xl">
           <DialogHeader className="border-b border-slate-200 px-6 py-5">
             <DialogTitle className="flex items-center gap-2 text-slate-900">
@@ -2371,7 +2450,7 @@ export function QueryEditor({ record, onBack, onSaved }: Props) {
                     </div>
                     <button
                       className="shrink-0 rounded p-0.5 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-600"
-                      onClick={() => dispatch({ type: 'REMOVE_FIELD', target, fieldId: field.id })}
+                      onClick={() => { dispatch({ type: 'REMOVE_FIELD', target, fieldId: field.id }); bt.trackAction('remove_column', { column: field.column }) }}
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>

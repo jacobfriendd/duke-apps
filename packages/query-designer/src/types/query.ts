@@ -11,6 +11,7 @@ export interface DatasourceInfo {
   dialect: SqlDialect
   schemas: string[]
   reachable?: boolean
+  supportsSQL?: boolean
 }
 
 export interface DatasourceTable {

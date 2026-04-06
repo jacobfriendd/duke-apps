@@ -1,9 +1,9 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import type { Answer, SurveyResponse, SectionResponse } from '@/types'
 import { surveySections } from '@/data/sections'
 import { ProgressBar } from './ProgressBar'
 import { SectionView } from './SectionView'
-import { ChevronLeft, ChevronRight, CheckCircle2, Send } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CheckCircle2, Send, AlertCircle } from 'lucide-react'
 
 const STORAGE_KEY = 'qd-test-framework-response'
 
@@ -44,6 +44,7 @@ export function Survey() {
     }
   })
   const [animating, setAnimating] = useState(false)
+  const [validationError, setValidationError] = useState<string | null>(null)
 
   const contentRef = useRef<HTMLDivElement>(null)
 
@@ -83,6 +84,7 @@ export function Survey() {
 
   const handleAnswer = useCallback(
     (questionId: string, answer: Answer) => {
+      setValidationError(null)
       setResponse((prev) => {
         const sectionId = currentSection.id
         const existing: SectionResponse = prev.sections[sectionId] ?? { answers: {} }
@@ -103,6 +105,30 @@ export function Survey() {
     [currentSection.id],
   )
 
+  // Check if all required questions in the current section are answered
+  const getUnansweredQuestions = useCallback(() => {
+    const answers = getSectionAnswers(currentSection.id)
+    const unanswered: string[] = []
+    for (const q of currentSection.questions) {
+      if (q.type === 'instructions') continue
+      // Treat all non-instruction questions as required unless explicitly optional
+      const isRequired = q.required !== false
+      if (!isRequired) continue
+      const answer = answers[q.id]
+      if (!answer) {
+        unanswered.push(q.label)
+        continue
+      }
+      // Check for empty values
+      if (answer.type === 'text' && !answer.value.trim()) {
+        unanswered.push(q.label)
+      } else if (answer.type === 'multi-choice' && answer.value.length === 0) {
+        unanswered.push(q.label)
+      }
+    }
+    return unanswered
+  }, [currentSection, getSectionAnswers])
+
   const navigateTo = useCallback(
     (index: number) => {
       if (index < 0 || index >= surveySections.length || index === currentIndex) return
@@ -117,15 +143,30 @@ export function Survey() {
   )
 
   const goNext = useCallback(() => {
+    const unanswered = getUnansweredQuestions()
+    if (unanswered.length > 0) {
+      setValidationError(`Please answer: ${unanswered.join(', ')}`)
+      contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+    setValidationError(null)
     setCompletedSections((prev) => new Set([...prev, currentSection.id]))
     navigateTo(currentIndex + 1)
-  }, [currentIndex, currentSection.id, navigateTo])
+  }, [currentIndex, currentSection.id, navigateTo, getUnansweredQuestions])
 
   const goPrev = useCallback(() => {
+    setValidationError(null)
     navigateTo(currentIndex - 1)
   }, [currentIndex, navigateTo])
 
   const handleSubmit = useCallback(() => {
+    const unanswered = getUnansweredQuestions()
+    if (unanswered.length > 0) {
+      setValidationError(`Please answer: ${unanswered.join(', ')}`)
+      contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+    setValidationError(null)
     const completedAt = new Date().toISOString()
     setResponse((prev) => {
       const updated = { ...prev, completedAt }
@@ -143,7 +184,7 @@ export function Survey() {
       return next
     })
     navigateTo(surveySections.length - 1)
-  }, [currentSection.id, navigateTo])
+  }, [currentSection.id, navigateTo, getUnansweredQuestions])
 
   const isFirstSection = currentIndex === 0
   const isThankYouSection = currentSection.id === 'thank-you'
@@ -173,6 +214,14 @@ export function Survey() {
               onAnswer={handleAnswer}
             />
           </div>
+
+          {/* Validation error */}
+          {validationError && (
+            <div className="flex items-start gap-2.5 mt-6 px-4 py-3 rounded-lg bg-destructive/10 border border-destructive/30 text-sm text-destructive animate-in fade-in slide-in-from-top-1 duration-200">
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              <span>{validationError}</span>
+            </div>
+          )}
 
           {/* Navigation */}
           {!isThankYouSection && (

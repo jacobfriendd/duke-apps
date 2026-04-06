@@ -24,3 +24,4 @@ apis:
   - POST /api/datasources/*/_ping
   - POST /api/datasources/*/_query
   - POST /api/datasources/*/_search-metadata
+  # Informer uses informer.yaml for deployed access — keep both files in sync
