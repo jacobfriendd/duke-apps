@@ -10,8 +10,7 @@ export async function GET({ query }) {
 
 // POST /api/_server/responses — create or update a response
 export async function POST({ request, query }) {
-  const body = await request.json()
-  const { id: responseId, startedAt, completedAt, sections, sessionData } = body
+  const { id: responseId, startedAt, completedAt, sections, sessionData } = request.body
 
   if (!responseId) {
     return { status: 400, body: { error: 'Response id is required' } }
